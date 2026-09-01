@@ -1,6 +1,7 @@
 ﻿namespace Bookify.Domain.Apartments
 {
     using Bookify.Domain.Abstractions;
+    using Bookify.Domain.Commons;
 
     public sealed class Apartment : Entity
     {
