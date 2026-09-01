@@ -2,6 +2,7 @@
 {
     using System;
     using Bookify.Domain.Abstractions;
+    using Bookify.Domain.Users.Events;
 
     public sealed class User : Entity
     {
@@ -32,6 +33,8 @@
                 firstName,
                 lastName,
                 email);
+
+            user.RaiseDomainEvent(new UserCreatedDomainEvent(user.Id));
 
             return user;
         }
