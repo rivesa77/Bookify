@@ -1,6 +1,6 @@
 <Solution>
   <Folder Name="/Scr/">
-    <Project Path="../Bookify.Domain/Bookify.Domain.csproj" />
+    <Project Path="Bookify.Domain/Bookify.Domain.csproj" />
   </Folder>
   <Folder Name="/Tests/" />
 </Solution>
