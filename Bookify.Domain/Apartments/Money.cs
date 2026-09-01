@@ -2,7 +2,7 @@
 {
     using System;
 
-    internal record Money(decimal Amount, Currency Currency)
+    public record Money(decimal Amount, Currency Currency)
     {
         public static Money operator +(Money first, Money second)
         {

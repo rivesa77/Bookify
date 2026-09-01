@@ -2,7 +2,7 @@
 {
     using System;
 
-    internal abstract class Entity
+    public abstract class Entity
     {
         protected Entity(Guid id)
         {

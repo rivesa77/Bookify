@@ -1,6 +1,6 @@
 ﻿namespace Bookify.Domain.Apartments
 {
-    internal record Currency
+    public record Currency
     {
         internal static readonly Currency None = new("");
         public static readonly Currency Usd = new("USD");

@@ -2,7 +2,7 @@
 {
     using Bookify.Domain.Abstractions;
 
-    internal sealed class Apartment : Entity
+    public sealed class Apartment : Entity
     {
         public Apartment(
             Guid id,

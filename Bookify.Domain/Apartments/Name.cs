@@ -1,6 +1,6 @@
 ﻿namespace Bookify.Domain.Apartments
 {
-    internal record Name(string value)
+    public record Name(string Value)
     {
     }
 }
