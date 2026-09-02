@@ -15,5 +15,12 @@
         }
 
         public static Money Zero() => new(0, Currency.None);
+
+        public static Money Zero(Currency currency) => new(0, currency);
+
+        public bool IsZero()
+        {
+            return this == Zero(Currency);
+        }
     }
 }
