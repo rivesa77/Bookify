@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/Scr/">
+    <Project Path="Bookify.Application/Bookify.Application.csproj" Id="75e27d62-fb7c-44b4-8238-c13cf328c7d1" />
     <Project Path="Bookify.Domain/Bookify.Domain.csproj" />
   </Folder>
   <Folder Name="/Tests/" />
