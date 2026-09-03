@@ -68,9 +68,10 @@
             Apartment apartment,
             Guid userId,
             DateRange duration,
-            DateTime utcNow)
+            DateTime utcNow,
+            PricingServices pricingServices)
         {
-            PricingDetails pricingDetails = PricingServices.CalculatePricing(apartment, duration);
+            PricingDetails pricingDetails = pricingServices.CalculatePricing(apartment, duration);
 
             Booking booking = new(
                 Guid.NewGuid(),

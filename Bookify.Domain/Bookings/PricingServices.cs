@@ -5,7 +5,7 @@
 
     public sealed class PricingServices
     {
-        public static PricingDetails CalculatePricing(Apartment apartments, DateRange period)
+        public PricingDetails CalculatePricing(Apartment apartments, DateRange period)
         {
             Currency currency = apartments.Price.Currency;
 
