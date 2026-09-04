@@ -17,7 +17,7 @@
             {
                 percentageUpCharge += amenity switch
                 {
-                    Amenity.GardenView or Amenity.MontainView => 0.05m,
+                    Amenity.GardenView or Amenity.MountainView => 0.05m,
                     Amenity.AirConditioning => 0.02m,
                     Amenity.Parking => 0.01m,
                     _ => 0
@@ -33,14 +33,12 @@
 
             Money TotalPrice = Money.Zero(currency);
 
-            TotalPrice += priceForPeriod;
+            TotalPrice += priceForPeriod + amenitiesUpCharge;
 
             if (!apartments.CleaningFeeAmount.IsZero())
             {
                 TotalPrice += apartments.CleaningFeeAmount;
             }
-
-            TotalPrice += apartments.Price;
 
             return new PricingDetails(
                 priceForPeriod,

@@ -10,7 +10,7 @@
         Gym = 6,
         Spa = 7,
         Terrace = 8,
-        MontainView = 9,
+        MountainView = 9,
         GardenView = 10
     }
 }

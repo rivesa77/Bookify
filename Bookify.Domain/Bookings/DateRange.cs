@@ -14,7 +14,7 @@
 
         public static DateRange Create(DateOnly start, DateOnly end)
         {
-            if (start < end)
+            if (start > end)
             {
                 throw new ApplicationException("End date precedes start date.");
             }
