@@ -124,9 +124,9 @@
 
         public Result Complete(DateTime utcNow)
         {
-            if (Status != BookingStatus.Reserved)
+            if (Status != BookingStatus.Confirmed)
             {
-                return Result.Failure(BookingErrors.NotReserved);
+                return Result.Failure(BookingErrors.NotConfirmed);
             }
 
             Status = BookingStatus.Completed;
