@@ -24,7 +24,7 @@
             // If it does not contain any validator, it is using a command and we return to the PipelineBehavior.
             if (!validators.Any())
             {
-                return await next();
+                return await next(cancellationToken);
             }
 
             ValidationContext<TRequest> context = new(request);
@@ -42,7 +42,7 @@
                 throw new Exceptions.ValidationException(validatorErrors);
             }
 
-            return await next();
+            return await next(cancellationToken);
         }
     }
 }
