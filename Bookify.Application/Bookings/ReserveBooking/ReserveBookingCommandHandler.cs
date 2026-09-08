@@ -73,7 +73,7 @@
 
                 return booking.Id;
             }
-            catch (CurrencyException)
+            catch (ConcurrencyException)
             {
                 return Result.Failure<Guid>(BookingErrors.Overlap);
             }

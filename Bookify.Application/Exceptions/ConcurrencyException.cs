@@ -2,9 +2,9 @@
 {
     using System;
 
-    public sealed class CurrencyException : Exception
+    public sealed class ConcurrencyException : Exception
     {
-        public CurrencyException(string message, Exception innerException)
+        public ConcurrencyException(string message, Exception innerException)
             : base(message, innerException)
         {
         }
