@@ -12,23 +12,25 @@
 
         public int Status { get; init; }
 
-        public string PriceCurrency { get; init; } = String.Empty;
+        public decimal PriceAmount { get; init; }
+
+        public string PriceCurrency { get; init; } = string.Empty;
 
         public decimal CleaningFeeAmount { get; init; }
 
-        public decimal CleaningFeeCurrency { get; init; }
+        public string CleaningFeeCurrency { get; init; } = string.Empty;
 
         public decimal AmenitiesUpChargeAmount { get; init; }
 
-        public decimal AmenitiesUpChargeCurrency { get; init; }
+        public string AmenitiesUpChargeCurrency { get; init; } = string.Empty;
 
         public decimal TotalPriceAmount { get; init; }
 
-        public decimal TotalPriceCurrency { get; init; }
+        public string TotalPriceCurrency { get; init; } = string.Empty;
 
-        public DateOnly Start { get; init; }
+        public DateOnly DurationStart { get; init; }
 
-        public DateOnly End { get; init; }
+        public DateOnly DurationEnd { get; init; }
 
         public DateTime CreatedOnUtc { get; init; }
     }
