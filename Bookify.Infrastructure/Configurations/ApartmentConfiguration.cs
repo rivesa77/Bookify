@@ -34,6 +34,9 @@
                 priceBuilder.Property(money => money.Currency)
                     .HasConversion(money => money.Code, code => Currency.FromCode(code));
             });
+
+            // For optimistic concurrency.
+            builder.Property<uint>("Version").IsRowVersion();
         }
     }
 }
