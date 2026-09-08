@@ -1,5 +1,6 @@
 ﻿namespace Bookify.Infrastructure
 {
+    using Bookify.Application.Abstractions.Data;
     using Bookify.Application.Abstractions.DateTimeProvider;
     using Bookify.Application.Abstractions.Email;
     using Bookify.Domain.Abstractions;
@@ -7,8 +8,10 @@
     using Bookify.Domain.Bookings;
     using Bookify.Domain.Users;
     using Bookify.Infrastructure.Clock;
+    using Bookify.Infrastructure.Data;
     using Bookify.Infrastructure.Email;
     using Bookify.Infrastructure.Repositories;
+    using Dapper;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.DependencyInjection;
@@ -37,6 +40,12 @@
                 // UseSnakeCaseNamingConvention automatically map C# class and property names to snake_case in the database.
                 options.UseNpgsql(connectionString).UseSnakeCaseNamingConvention();
             });
+
+            services
+                .AddSingleton<ISqlConnectionFactory>(_ => new SqlConnectionFactory(connectionString));
+
+            SqlMapper
+                .AddTypeHandler(new DateOnlyTypeHandler());
 
             return services;
         }
