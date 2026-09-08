@@ -4,7 +4,7 @@
 
     public sealed record Name
     {
-        public const int ExactLength = 75;
+        public const int ExactLength = 200;
 
         private Name(string value)
         {
