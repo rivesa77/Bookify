@@ -6,14 +6,14 @@
     internal abstract class Repository<TEntity>
         where TEntity : Entity
     {
-        private readonly ApplicationDbContext applicationDbContext;
+        protected readonly ApplicationDbContext applicationDbContext;
 
         protected Repository(ApplicationDbContext applicationDbContext)
         {
             this.applicationDbContext = applicationDbContext;
         }
 
-        public async Task<TEntity?> GetEntityAsync(Guid id, CancellationToken cancellationToken = default)
+        public async Task<TEntity?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
         {
             return await applicationDbContext
                 .Set<TEntity>()
