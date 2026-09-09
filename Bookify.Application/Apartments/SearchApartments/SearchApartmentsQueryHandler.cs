@@ -42,11 +42,11 @@
                     a.address_zip_code AS ZipCode,
                     a.address_city AS City,
                     a.address_street AS Street
-                FROM apartments AS a
+                FROM "Apartments" AS a
                 WHERE NOT EXISTS
                 (
                     SELECT 1
-                    FROM bookings AS b
+                    FROM "Bookings" AS b
                     WHERE
                         b.apartment_id = a.id AND
                         b.duration_start <= @EndDate AND
@@ -57,22 +57,22 @@
 
             using IDbConnection connection = sqlConnectionFactory.CreateConnection();
 
-            IReadOnlyList<ApartmentResponse> apartments =
-                (IReadOnlyList<ApartmentResponse>)await connection.QueryAsync<ApartmentResponse, AddressResponse, ApartmentResponse>(
-                sql,
-                (apartment, address) =>
-                {
-                    apartment.Address = address;
+            IEnumerable<ApartmentResponse> apartments = await connection
+                .QueryAsync<ApartmentResponse, AddressResponse, ApartmentResponse>(
+                    sql,
+                    (apartment, address) =>
+                    {
+                        apartment.Address = address;
 
-                    return apartment;
-                },
-                new
-                {
-                    request.StartDate,
-                    request.EndDate,
-                    ActiveBookingStatuses
-                },
-                splitOn: "Country");
+                        return apartment;
+                    },
+                    new
+                    {
+                        request.StartDate,
+                        request.EndDate,
+                        ActiveBookingStatuses
+                    },
+                    splitOn: "Country");
 
             return apartments.ToList();
         }
