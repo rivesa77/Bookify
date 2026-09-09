@@ -6,6 +6,10 @@
     {
         private readonly List<IDomainEvent> domainEvents = [];
 
+        protected Entity()
+        {
+        }
+
         protected Entity(Guid id)
         {
             Id = id;
