@@ -18,11 +18,11 @@
 
         [HttpGet]
         public async Task<IActionResult> SearchApartments(
-            DateOnly starDate,
+            DateOnly startDate,
             DateOnly endDate,
             CancellationToken cancellationToken)
         {
-            SearchApartmentsQuery query = new(starDate, endDate);
+            SearchApartmentsQuery query = new(startDate, endDate);
 
             Result<IReadOnlyList<ApartmentResponse>> result = await sender.Send(query, cancellationToken);
 
