@@ -4,12 +4,13 @@ Este proyecto contiene el nucleo del dominio de Bookify. Su responsabilidad es m
 
 La capa Domain no deberia depender de detalles externos como bases de datos, controladores HTTP, colas, archivos o frameworks de infraestructura. Aqui viven las entidades y objetos de valor que representan el lenguaje del negocio.
 
-[Guia de la solucion](../readme.md) | [Application](../Bookify.Application/readme.md) | [Infrastructure](../Bookify.Infrastructure/readme.md)
+[Guia de la solucion](../readme.md) | [Application](../Bookify.Application/readme.md) | [Infrastructure](../Bookify.Infrastructure/readme.md) | [Api](../Bookify.Api/readme.md)
 
 ## Indice
 
 - [Inventario de archivos](#inventario-de-archivos)
 - [Abstracciones compartidas](#abstractions)
+- [Constructores y materializacion](#constructores-y-materializacion)
 - [Dinero y monedas](#commons)
 - [Apartamentos](#apartments)
 - [Usuarios](#users)
@@ -140,7 +141,9 @@ Cuando una reserva cambia de estado, puede levantar un evento:
 RaiseDomainEvent(new BookingConfirmedDomainEvent(Id));
 ```
 
-El constructor protegido recibe el identificador y `Id` tiene `init`. `GetDomainEvents` devuelve una copia de la lista interna; obtenerla no elimina los eventos. `ClearDomainEvent` vacia la lista, y `RaiseDomainEvent` es protegido, por lo que lo invoca el codigo de la propia entidad.
+La clase tiene dos constructores protegidos: `Entity(Guid id)` asigna la identidad al crear una entidad de negocio; `Entity()` permite que los constructores privados vacios de las entidades derivadas se utilicen para materializacion. Debe ser `protected`, porque un constructor base `private` no seria accesible desde las clases derivadas. `Id` tiene `init`; el constructor vacio no genera un identificador nuevo.
+
+`GetDomainEvents` devuelve una copia de la lista interna; obtenerla no elimina los eventos. `ClearDomainEvent` vacia la lista, y `RaiseDomainEvent` es protegido, por lo que lo invoca el codigo de la propia entidad.
 
 En esta solucion `ApplicationDbContext` lee esos eventos despues de guardar, limpia las listas y publica la copia con MediatR. El dominio solo acumula los eventos en memoria.
 
@@ -254,6 +257,36 @@ Su objetivo es que Application pueda confirmar una operacion sin conocer el deta
 
 La implementacion actual es `ApplicationDbContext`. Guarda los cambios pendientes del mismo contexto que usan los repositorios, publica los eventos y devuelve el entero producido por EF Core. Application conoce el contrato, no el mecanismo de almacenamiento.
 
+## Constructores y materializacion
+
+Crear una entidad nueva y reconstruir una fila existente son operaciones distintas. Application sigue usando `new Apartment(...)`, `Booking.Reserve(...)`, `User.Create(...)` y `Review.Create(...)`. Para reconstruir entidades desde PostgreSQL, EF dispone ahora de un constructor privado sin parametros en cada una.
+
+| Archivo | Constructor de materializacion | Creacion de negocio |
+| --- | --- | --- |
+| `Abstractions/Entity.cs` | `protected Entity()` permite inicializar la base desde una entidad derivada. | `protected Entity(Guid id)` recibe la identidad. |
+| `Apartments/Apartment.cs` | `private Apartment()`. | Constructor publico con id, nombre, descripcion, direccion, precios y comodidades. |
+| `Bookings/Booking.cs` | `private Booking()`. | `Reserve` calcula importes y llama al constructor privado parametrizado. |
+| `Users/User.cs` | `private User()`. | `Create` genera id y acumula `UserCreatedDomainEvent`. |
+| `Reviews/Review.cs` | `private Review()`. | `Create` comprueba elegibilidad y acumula `ReviewCreatedDomainEvent`. |
+
+El error `No suitable constructor was found for the type 'Apartment'` aparecia porque EF no podia enlazar `address`, `price` y `cleaningFeeAmount`: Infrastructure los configura con `OwnsOne`, que representa navegaciones a dependientes. No se pueden suministrar mediante el enlace de propiedades del constructor de la entidad propietaria. `Booking` tenia la misma limitacion con `Duration` y sus importes owned.
+
+`Name` y `Description` usan conversiones de valor y son propiedades escalares para EF; no todos los objetos de valor impiden el enlace de constructores. `Amenities` se mapea como coleccion primitiva en PostgreSQL y no era uno de los tres parametros rechazados en el error. `User` y `Review` tambien tienen constructor vacio por consistencia, aunque sus objetos de valor convertidos permiten enlazar sus constructores parametrizados.
+
+Ejemplo del patron ya incorporado:
+
+```csharp
+private Apartment()
+{
+}
+```
+
+EF puede crear la instancia y rellenar propiedades, campos y navegaciones mapeados. La presencia de un constructor vacio proporciona una via compatible; no implica que EF siempre lo prefiera cuando tambien existe otro constructor enlazable. Los setters privados no necesitan hacerse publicos para persistir las propiedades configuradas.
+
+Una lectura no llama a `Booking.Reserve`, `User.Create` ni `Review.Create`: no debe generar nuevas identidades, recalcular precios ni volver a producir eventos de creacion por leer datos existentes. La lista de eventos se inicializa vacia. Las conversiones configuradas por Infrastructure, como `Name.Create(value).Value` y `Rating.Create(value).Value`, si se aplican al reconstruir esos valores.
+
+Los constructores privados no son una nueva API de creacion para Application y no agregan una referencia a EF Core en Domain. Su proposito es facilitar la persistencia conservando la encapsulacion externa. Tampoco convierten campos opcionales en obligatorios: Domain mantiene nullable deshabilitado, y la migracion inicial permite `NULL` en numerosos campos. En particular, una direccion opcional cuyas columnas sean todas nulas puede no materializarse. Consultar [migraciones y esquema](../Bookify.Infrastructure/readme.md#migrations).
+
 ## Commons
 
 La carpeta `Commons` contiene objetos de valor reutilizables.
@@ -335,6 +368,8 @@ Esto permite que el dominio deje constancia de la ultima vez que el apartamento 
 Tambien permite que Infrastructure detecte un cambio del apartamento al guardar una reserva. El token de concurrencia se configura como propiedad sombra de EF; no existe una propiedad `Version` en esta clase. La proteccion requiere que el apartamento este seguido y que se emita su actualizacion, como se explica en [Infrastructure](../Bookify.Infrastructure/readme.md#concurrencia).
 
 `Apartment` tiene constructor publico y recibe todos sus datos, incluida la lista de comodidades. El setter privado de `Amenities` impide sustituirla desde fuera, pero la lista sigue siendo mutable: se pueden agregar elementos y repetir comodidades. El constructor no comprueba precios negativos ni monedas compatibles entre precio y limpieza.
+
+Tambien tiene `private Apartment()` para EF. Este constructor no asigna precios ni direccion; la materializacion completa los datos mapeados. `Amenities` mantiene su inicializador `[]`. El detalle del patron esta en [constructores y materializacion](#constructores-y-materializacion).
 
 ### Name
 
@@ -470,7 +505,7 @@ Propiedades:
 - `LastName`
 - `Email`
 
-No se crea directamente con `new` desde fuera porque su constructor es privado. Se crea mediante el metodo de fabrica:
+No se crea directamente con `new` desde fuera porque sus constructores son privados. Ademas del constructor parametrizado que utiliza la fabrica, `User` tiene `private User()` para permitir su reconstruccion por persistencia sin invocar `Create` ni generar eventos nuevos por una lectura. Para crear un usuario nuevo se usa:
 
 ```csharp
 User user = User.Create(firstName, lastName, email);
@@ -546,6 +581,8 @@ La carpeta `Bookings` contiene la parte mas rica del dominio actual: la reserva 
 ### Booking
 
 `Booking` es una entidad del dominio y representa una reserva.
+
+Dispone de un constructor privado parametrizado para `Reserve` y otro privado sin parametros para materializacion. El segundo permite que EF reconstruya la reserva junto a `Duration` y los cuatro importes owned, sin tener que enlazarlos al constructor ni recalcular precios.
 
 Propiedades principales:
 
@@ -856,6 +893,8 @@ La carpeta `Reviews` modela las resenas que los usuarios pueden dejar despues de
 ### Review
 
 `Review` es una entidad del dominio.
+
+Tiene un constructor privado parametrizado usado por `Create` y otro privado sin parametros para persistencia. Una lectura no ejecuta la comprobacion de elegibilidad de `Create` ni levanta de nuevo `ReviewCreatedDomainEvent`.
 
 Propiedades:
 

@@ -4,9 +4,9 @@ Este proyecto contiene la capa de aplicacion de Bookify. Su responsabilidad es e
 
 Application no configura EF Core, no construye conexiones Npgsql ni implementa el envio de correo. Define contratos que Infrastructure implementa. Sin embargo, sus queries contienen SQL, nombres de tablas y columnas, e incluso sintaxis de PostgreSQL como `ANY`. La construccion de la conexion esta abstraida, pero el esquema y el dialecto de las lecturas siguen siendo dependencias de esta capa.
 
-Esta guia distingue el comportamiento implementado de las limitaciones pendientes. Los ejemplos de host requieren registro de servicios y una base de datos preparada; el `Program.cs` de la raiz todavia no ejecuta estos casos de uso.
+Esta guia distingue el comportamiento implementado de las limitaciones pendientes. `Bookify.Api/Program.cs` ya registra Application e Infrastructure, y sus controladores invocan los casos de uso con `ISender`. En Development, la API aplica las migraciones al arrancar. Las lecturas conservan discrepancias SQL documentadas mas abajo.
 
-[Guia de la solucion](../readme.md) | [Domain](../Bookify.Domain/readme.md) | [Infrastructure](../Bookify.Infrastructure/readme.md)
+[Guia de la solucion](../readme.md) | [Domain](../Bookify.Domain/readme.md) | [Infrastructure](../Bookify.Infrastructure/readme.md) | [Api](../Bookify.Api/readme.md)
 
 ## Indice
 
@@ -644,8 +644,8 @@ Contiene datos planos:
 - `ApartmentId`
 - `Status`
 - importes y monedas de precio;
-- `Start`
-- `End`
+- `DurationStart`
+- `DurationEnd`
 - `CreatedOnUtc`
 
 Este DTO no es una entidad de dominio. Es una forma optimizada de devolver informacion hacia afuera.
@@ -656,13 +656,12 @@ Tipos y contenido exactos:
 | --- | --- | --- |
 | `Id`, `UserId`, `ApartmentId` | `Guid` | Identificadores. |
 | `Status` | `int` | Valor de `BookingStatus`: Reserved=1, Confirmed=2, Rejected=3, Cancelled=4, Completed=5. |
-| `PriceCurrency` | `string` | Codigo de moneda del periodo. |
-| `CleaningFeeAmount`, `AmenitiesUpChargeAmount`, `TotalPriceAmount` | `decimal` | Importes. |
-| `CleaningFeeCurrency`, `AmenitiesUpChargeCurrency`, `TotalPriceCurrency` | `decimal` | Incoherencia actual: las columnas representan codigos de moneda. |
-| `Start`, `End` | `DateOnly` | Fechas de estancia. |
+| `PriceAmount`, `CleaningFeeAmount`, `AmenitiesUpChargeAmount`, `TotalPriceAmount` | `decimal` | Importes del periodo, limpieza, recargo y total. |
+| `PriceCurrency`, `CleaningFeeCurrency`, `AmenitiesUpChargeCurrency`, `TotalPriceCurrency` | `string` | Codigos de moneda, inicializados como `string.Empty`. |
+| `DurationStart`, `DurationEnd` | `DateOnly` | Fechas de estancia, alineadas con los alias del SELECT. |
 | `CreatedOnUtc` | `DateTime` | Instante de creacion. |
 
-Las propiedades tienen `init`. No existe `PriceAmount` en el DTO, aunque la consulta lo selecciona, y no se exponen las fechas posteriores de confirmacion, rechazo, finalizacion o cancelacion.
+Las propiedades tienen `init`. Se han corregido tres diferencias del DTO anterior: ahora existe `PriceAmount`, todas las monedas son `string` y las fechas se llaman `DurationStart`/`DurationEnd`, como sus alias SQL. No se exponen las fechas posteriores de confirmacion, rechazo, finalizacion o cancelacion. El controlador devuelve este DTO como JSON al consultar una reserva con exito.
 
 ### GetBookingQueryHandler
 
@@ -687,13 +686,13 @@ Ese comportamiento presupone que SQL y mapeo consiguen ejecutarse. La implementa
 | Parte | Diferencia actual | Consecuencia |
 | --- | --- | --- |
 | Filtro | SQL usa `@BookingId`, pero el objeto de parametros solo aporta `Id`, no `BookingId`. | No se proporciona el parametro que solicita el filtro. |
-| Precio | SQL selecciona `PriceAmount`, ausente en el DTO. | El importe del periodo no se recoge. |
-| Fechas | SQL devuelve `DurationStart` y `DurationEnd`; el DTO tiene `Start` y `End`. | No existe un mapeo personalizado que relacione esos nombres. |
-| Monedas | Tres propiedades de moneda son `decimal`. | No representan codigos como EUR y pueden fallar al convertirlos. |
-| Recargo | SQL usa `amenities_up_charge_*`, pero la propiedad EF es `AmenitiesUpChange`. | No hay renombrado explicito que alinee ambas formas; hay que contrastar el esquema real. |
+| Tabla | SQL consulta `bookings` sin comillas; la migracion crea `Bookings` con mayuscula. | El identificador no coincide con la tabla entrecomillada que genera EF en PostgreSQL. |
+| Recargo | SQL usa `amenities_up_charge_*`, pero la migracion crea `amenities_up_change_*` desde `AmenitiesUpChange`. | Las columnas solicitadas no existen con ese nombre en el esquema de la migracion inicial. |
 | Cancelacion | El token de `Handle` no se pasa a Dapper. | La llamada SQL no recibe esa cancelacion. |
 
 Por tanto, esta query expresa el contrato de lectura, pero necesita resolver esas incoherencias antes de considerarse validada contra una base de datos. No utiliza `BookingErrors.NotFound` cuando no obtiene una fila.
+
+Las correcciones de `BookingResponse` no modifican los parametros ni los nombres de tabla y columnas del SQL. La referencia para comprobar el esquema es [la migracion inicial](../Bookify.Infrastructure/Migrations/20260909102321_Initial_Database.cs), no solo las convenciones de nombres configuradas en EF.
 
 ## Apartments/SearchApartments
 
@@ -785,6 +784,8 @@ El multi-mapping usa `splitOn: "Country"`: las columnas anteriores rellenan `Apa
 
 El SQL usa `NOT EXISTS` y `ANY(@ActiveBookingStatuses)` con parametros. No ordena, pagina ni limita los resultados. El handler no propaga el token a Dapper. Que un apartamento aparezca disponible no garantiza que siga libre al reservar; el comando debe comprobarlo de nuevo.
 
+El controlador actual expone esta query como `GET /api/apartments?starDate=...&endDate=...`; el parametro HTTP se llama `starDate`, mientras el mensaje interno usa `StartDate`. Ademas, SQL consulta `apartments` y `bookings` sin comillas, pero la migracion inicial crea `Apartments` y `Bookings`. Esa discrepancia afecta tambien a esta lectura, independientemente del multi-mapping del DTO.
+
 ## Como usar Application desde el host
 
 En un host que ya disponga de un `builder`, se registran ambas capas:
@@ -797,7 +798,9 @@ builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 ```
 
-Este fragmento es una integracion futura, no el contenido del `Program.cs` actual. El host debe referenciar los proyectos, proporcionar logging y un scope por operacion, configurar `ConnectionStrings:DataBase` y disponer de las tablas. El registro de servicios no crea ni migra la base de datos.
+Este registro ya existe en `Bookify.Api/Program.cs`. El host proporciona logging y scopes por solicitud; los controladores reciben `ISender`. Configura `ConnectionStrings:Database` (equivalente a `DataBase` en la configuracion de .NET) y en Development llama despues a `ApplyMigration()`. El registro de servicios por si solo no crea ni migra tablas.
+
+La [guia de Api](../Bookify.Api/readme.md) explica las rutas y respuestas: GET de reserva devuelve `200` o `404` segun el resultado; POST devuelve `201` con el id y `Location`, o `400` con `Error`. La API no tiene un manejador propio para convertir `ValidationException` de Application en una respuesta estructurada.
 
 Despues, desde un endpoint, controller o servicio que reciba `ISender` por constructor, se usa MediatR:
 
@@ -878,14 +881,14 @@ Para reaccionar a un evento, implementar `INotificationHandler<TDomainEvent>`. E
 ## Puntos a revisar
 
 - La traduccion de `DbUpdateConcurrencyException` a `ConcurrencyException` ya esta conectada en `ApplicationDbContext`. Debe comprobarse con solicitudes concurrentes contra la base de datos; definir la excepcion no demuestra por si mismo la proteccion de todas las escrituras.
-- `GetBookingQueryHandler` tiene incoherencias de parametros, columnas y DTO detalladas en su apartado. Compilar no valida esas consultas SQL.
+- `BookingResponse` ya tiene corregidos los importes, monedas y alias de fechas. `GetBookingQueryHandler` mantiene discrepancias de parametro, tabla y columnas de recargo. Ambas queries consultan tablas en minusculas que no coinciden con las de la migracion inicial. Compilar no valida esas consultas SQL.
 - `ValidationBehavior` usa validacion sincronica. Si se agregan validadores asincronos, deberia adaptarse.
 - Logging no distingue un resultado fallido de negocio de uno exitoso y no registra el objeto excepcion.
 - Las llamadas Dapper y la publicacion actual de eventos no reciben el token del request; `IEmailService` tampoco lo admite.
 - No hay autorizacion ni reglas de fechas futuras en los casos de uso actuales.
 - El correo es una implementacion vacia y el plazo de diez minutos solo aparece en el texto del mensaje.
 - No existen comandos para confirmar, cancelar, rechazar, completar reservas, crear usuarios o dejar resenas. Algunas operaciones estan implementadas solo en Domain.
-- No hay host conectado ni proyectos de pruebas en la solucion. El funcionamiento con SQL, materializacion EF y conflictos reales requiere pruebas de integracion.
+- El host Api ya esta conectado y existe la migracion inicial. No hay proyectos de pruebas en la solucion; la generacion del esquema no verifica las consultas Dapper, los datos materializados ni los conflictos reales.
 
 ## Resumen
 

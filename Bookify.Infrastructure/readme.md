@@ -4,7 +4,7 @@ Este proyecto contiene la capa de infraestructura de Bookify. Su responsabilidad
 
 Aqui viven las implementaciones concretas de persistencia, acceso SQL, fecha/hora del sistema y envio de email.
 
-[Guia de la solucion](../readme.md) | [Domain](../Bookify.Domain/readme.md) | [Application](../Bookify.Application/readme.md)
+[Guia de la solucion](../readme.md) | [Domain](../Bookify.Domain/readme.md) | [Application](../Bookify.Application/readme.md) | [Api](../Bookify.Api/readme.md)
 
 ## Indice
 
@@ -12,6 +12,7 @@ Aqui viven las implementaciones concretas de persistencia, acceso SQL, fecha/hor
 - [Registro y tiempos de vida](#dependencyinjection)
 - [Contexto y eventos](#applicationdbcontext)
 - [Mapeo de entidades](#configurations)
+- [Migraciones y esquema](#migrations)
 - [Repositorios](#repositories)
 - [Conexiones y fechas de Dapper](#data)
 - [Reloj](#clock)
@@ -68,6 +69,7 @@ Bookify.Infrastructure
 |-- Configurations
 |-- Data
 |-- Email
+|-- Migrations
 |-- Repositories
 |-- Bookify.Infrastructure.csproj
 ```
@@ -123,6 +125,9 @@ Las versiones declaradas son `EFCore.NamingConventions` 10.0.1, `Microsoft.Exten
 | [Data/DateOnlyTypeHandler.cs](Data/DateOnlyTypeHandler.cs) | Adaptacion entre fechas SQL y `DateOnly` para Dapper. |
 | [Clock/DateTimeProvider.cs](Clock/DateTimeProvider.cs) | Acceso al reloj UTC del sistema. |
 | [Email/EmailService.cs](Email/EmailService.cs) | Implementacion provisional sin envio real de correo. |
+| [Migrations/20260909102321_Initial_Database.cs](Migrations/20260909102321_Initial_Database.cs) | Operaciones Up/Down para crear o retirar el esquema inicial. |
+| [Migrations/20260909102321_Initial_Database.Designer.cs](Migrations/20260909102321_Initial_Database.Designer.cs) | Identifica la migracion y describe el modelo destino de ese cambio. |
+| [Migrations/ApplicationDbContextModelSnapshot.cs](Migrations/ApplicationDbContextModelSnapshot.cs) | Modelo de referencia para calcular diferencias al generar la siguiente migracion. |
 
 Las implementaciones de repositorios, configuraciones, reloj, conexion y correo son `internal`. El host accede a ellas a traves de los registros publicos de `DependencyInjection`, en vez de construirlas directamente. `ApplicationDbContext` si es publico.
 
@@ -221,7 +226,9 @@ builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 ```
 
-Es un fragmento para un host que ya tenga `builder`: el punto de entrada actual de la raiz no contiene esa composicion.
+Este registro ya se ejecuta en `Bookify.Api/Program.cs`. La API resuelve las implementaciones desde sus controladores a traves de MediatR. En Development, ademas, aplica las migraciones con `ApplyMigration()` despues de construir el host.
+
+La clave `Database` del archivo `Bookify.Api/appsettings.Development.json` coincide con `DataBase`, porque la configuracion de .NET no distingue mayusculas en las claves. Su host `bookify-db` es valido dentro de la red Compose. Desde Windows, con el puerto 5432 publicado, debe sobrescribirse la cadena con host `localhost`, por ejemplo mediante `ConnectionStrings__Database`.
 
 ## ApplicationDbContext
 
@@ -312,7 +319,7 @@ Esta carpeta contiene configuraciones de EF Core por entidad. Se usa Fluent API 
 
 `HasConversion` transforma un objeto de valor de una propiedad en un valor persistible y lo reconstruye al leer. `OwnsOne` modela un objeto dependiente del propietario, como `Money` o `Address`; no crea un repositorio independiente para ese objeto. `HasOne<T>().WithMany().HasForeignKey(...)` establece relaciones por identificador sin exigir propiedades de navegacion en las entidades.
 
-Las configuraciones llaman a `ToTable` con `Apartments`, `Bookings`, `Reviews` y `Users`. El registro global agrega la convencion snake_case. Las consultas Dapper esperan los nombres en minusculas y columnas como `duration_start`; esa coincidencia debe verificarse al generar y aplicar el esquema real.
+Las configuraciones llaman a `ToTable` con `Apartments`, `Bookings`, `Reviews` y `Users`. Aunque el registro global agrega snake_case, la migracion inicial conserva esos nombres explicitos de tabla con mayusculas y genera las columnas en snake_case. Las consultas Dapper usan `apartments` y `bookings` sin comillas; no coinciden con esas tablas entrecomilladas de PostgreSQL. La discrepancia sigue pendiente en el codigo actual.
 
 ### ApartmentConfiguration
 
@@ -401,6 +408,93 @@ Responsabilidades:
 El indice unico protege que no existan dos usuarios con el mismo email en la base de datos.
 
 Esa proteccion requiere que el indice se haya creado realmente en la base de datos. La configuracion no normaliza mayusculas ni espacios, y el objeto `Email` tampoco valida formato. La unicidad depende de los valores y de las reglas de comparacion de la columna; no equivale a un sistema de autenticacion.
+
+## Migrations
+
+Infrastructure contiene la migracion `20260909102321_Initial_Database`. Las herramientas de EF construyen el modelo a partir de `ApplicationDbContext` y sus configuraciones, y generan cambios de esquema. La creacion de archivos y su aplicacion a PostgreSQL son pasos distintos.
+
+### Constructores y creacion del modelo
+
+Las entidades `Apartment`, `Booking`, `Review` y `User` tienen ahora constructores privados vacios, y `Entity` ofrece un constructor protegido vacio para sus derivadas. Esto resuelve el error de enlace del constructor de `Apartment` con `Address`, `Price` y `CleaningFeeAmount`, configurados como owned. `Booking` tambien necesita una via compatible para sus navegaciones owned.
+
+`HasConversion` convierte valores escalares y permite enlazarlos como propiedades; `OwnsOne` configura dependientes que EF debe materializar como parte del grafo. El constructor privado vacio no obliga a hacer publicos los setters ni a invocar las fabricas de creacion al leer. `Amenities` es una coleccion primitiva, no uno de los parametros owned rechazados en aquel error. Ver [Domain: materializacion](../Bookify.Domain/readme.md#constructores-y-materializacion).
+
+No hay una fabrica `IDesignTimeDbContextFactory` en el proyecto. Las herramientas usan Api como proyecto de inicio para obtener el proveedor de servicios, con el contexto y `IPublisher` registrados. Un aviso de licencia emitido por MediatR al resolverlo es distinto de un error de validacion del modelo de EF.
+
+### Initial_Database.cs
+
+`Up(MigrationBuilder)` crea las tablas en orden de dependencias: primero `Apartments` y `Users`, despues `Bookings` y finalmente `Reviews`.
+
+| Tabla | Columnas y relaciones principales |
+| --- | --- |
+| `Apartments` | `id` UUID; nombre de hasta 200, descripcion de hasta 2000; cinco columnas `address_*`; `price_amount`/`price_currency`; `cleaning_fee_amount_amount`/`cleaning_fee_amount_currency`; `last_booked_on_utc`; `amenities` como `integer[]`; token `xmin` de tipo `xid`. |
+| `Users` | `id` UUID, nombre y apellido de hasta 200 y email de hasta 400. Indice unico `ix_users_email`. |
+| `Bookings` | Id y referencias a apartamento y usuario, `duration_start`/`duration_end`, importes y monedas del periodo, limpieza, recargo `amenities_up_change_*` y total; estado y fechas del ciclo de vida. |
+| `Reviews` | Id y referencias a apartamento, reserva y usuario, puntuacion, comentario de hasta 200 y fecha de creacion. |
+
+Los importes son `numeric`, las fechas de estancia `date` y los instantes `timestamp with time zone`. Hay indices sobre las claves externas de reservas y resenas. Todas las claves externas de esta migracion usan borrado en cascada; no se ha configurado un indice unico que limite las resenas a una por reserva.
+
+`Version` es una propiedad sombra del modelo que el proveedor mapea a la columna de sistema `xmin`. Su presencia en la migracion como `xid` con `rowVersion: true` refleja ese mapeo; no es una propiedad publica del dominio ni una columna de version que Application incremente manualmente.
+
+`Down(MigrationBuilder)` elimina primero `Reviews`, despues `Bookings` y finalmente `Apartments` y `Users`, respetando sus dependencias. Revertir hasta antes de la migracion inicial elimina esas tablas y sus datos. No hay `InsertData`, datos de ejemplo ni comandos de SQL de carga inicial.
+
+### Initial_Database.Designer.cs
+
+Es la otra parte de la clase parcial `Initial_Database`. Los atributos `DbContext` y `Migration` vinculan el contexto con el identificador `20260909102321_Initial_Database`. `BuildTargetModel` conserva el modelo destino de esa migracion: tipos, conversiones persistidas, columnas, relaciones, indices y navegaciones owned.
+
+Este archivo permite a las herramientas conocer el estado del modelo asociado al cambio. No es un segundo `Up` ni otra migracion independiente. La anotacion `ProductVersion` del modelo generado es `10.0.4`; las versiones declaradas de paquetes se documentan por separado en el apartado del proyecto.
+
+### ApplicationDbContextModelSnapshot.cs
+
+Hereda de `ModelSnapshot` y reconstruye el ultimo modelo versionado mediante `BuildModel`. Al agregar una nueva migracion, EF compara ese modelo con el actual para calcular las diferencias. La instantanea no inspecciona las tablas reales de cada equipo ni prueba que la migracion haya sido aplicada.
+
+Se versionan juntos el archivo principal, su Designer y la instantanea. Un cambio del modelo se expresa en entidades/configuraciones y despues se genera la migracion correspondiente; mantener los tres archivos coherentes permite seguir evolucionando el esquema.
+
+### Generar y aplicar desde Visual Studio
+
+La consola de paquetes utiliza `Bookify.Infrastructure` como destino y `Bookify.Api` como proyecto de inicio. Ya existe `Initial_Database`; para un cambio posterior, usar un nombre nuevo y representativo:
+
+```powershell
+Add-Migration NombreDelCambio -Project Bookify.Infrastructure -StartupProject Bookify.Api
+```
+
+Este comando genera archivos y actualiza el Snapshot. No aplica el esquema. Para aplicar las migraciones existentes a PostgreSQL desde Windows, primero configurar la cadena con el host publicado:
+
+```powershell
+$env:ConnectionStrings__Database = "Host=localhost;Port=5432;Database=bookify;Username=postgres;Password=postgres"
+Update-Database -Project Bookify.Infrastructure -StartupProject Bookify.Api
+```
+
+Las credenciales corresponden al Compose de desarrollo actual. La variable afecta a los procesos iniciados desde esa sesion; no cambia la cadena guardada para ejecutar dentro del contenedor.
+
+### Uso de la CLI
+
+Con la herramienta `dotnet ef` instalada, ejecutar desde la carpeta `Bookify.Infrastructure`:
+
+```powershell
+dotnet ef migrations list --startup-project ../Bookify.Api/Bookify.Api.csproj --no-connect
+dotnet ef migrations add NombreDelCambio --startup-project ../Bookify.Api/Bookify.Api.csproj --output-dir Migrations
+dotnet ef migrations script --startup-project ../Bookify.Api/Bookify.Api.csproj
+```
+
+`list --no-connect` enumera las migraciones del proyecto sin consultar cuales estan aplicadas en la base. `add` genera codigo, y `script` muestra el SQL para su revision. Para aplicar desde Windows, con PostgreSQL disponible y la cadena local configurada:
+
+```powershell
+$env:ConnectionStrings__Database = "Host=localhost;Port=5432;Database=bookify;Username=postgres;Password=postgres"
+dotnet ef database update --startup-project ../Bookify.Api/Bookify.Api.csproj
+```
+
+Al generar migraciones, las herramientas validan el modelo de EF; eso no ejecuta las consultas de Dapper ni comprueba las reservas concurrentes. No es necesario volver a generar `Initial_Database` para aplicarla.
+
+### Aplicacion automatica y limitaciones del esquema
+
+`Bookify.Api` llama a `ApplyMigration()` exclusivamente desde su rama Development. Crea un scope, resuelve `ApplicationDbContext` y ejecuta `Database.Migrate()` antes de atender HTTP. Requiere una conexion utilizable y no tiene reintentos propios. En otros entornos el host no aplica migraciones automaticamente. El metodo no agrega datos iniciales ni llama a las fabricas de dominio.
+
+`Address` sigue siendo un dependiente opcional con sus cinco columnas nullable. Si todas son `NULL`, EF puede no crear una instancia al leer, lo que explica el aviso de dependiente opcional con tabla compartida. Marcar la navegacion con `IsRequired()` y exigir datos en cada campo son decisiones distintas; ninguna de esas nuevas restricciones se ha agregado en esta migracion.
+
+Ademas de la direccion, muchos campos de referencia e importes owned aceptan `NULL` porque Domain tiene nullable deshabilitado y faltan restricciones explicitas. Los constructores privados solucionan la construccion del modelo, pero no corrigen esas reglas de obligatoriedad. Tampoco hay restricciones de base de datos de longitud exacta del nombre, rango de puntuacion o exclusion de reservas solapadas.
+
+El esquema inicial confirma diferencias con Application: las tablas mantienen mayusculas y el recargo usa `amenities_up_change_*`. Las queries usan tablas en minusculas sin comillas y GetBooking usa `amenities_up_charge_*`. Las monedas, fechas e importe del DTO `BookingResponse` ya estan corregidos; permanecen las diferencias del SQL y del parametro `@BookingId`.
 
 ## Repositories
 
@@ -683,15 +777,15 @@ La traduccion de excepciones ya esta conectada; las garantias de concurrencia y 
 
 ## Puntos a revisar
 
-- No hay migraciones en el estado actual del repositorio. Las configuraciones existen, pero falta revisar la migracion real que crea tablas e indices.
+- Existe `20260909102321_Initial_Database`, su Designer y el Snapshot. Las tablas conservan mayusculas, hay numerosos campos nullable y `Address` sigue siendo opcional; la generacion de la migracion no prueba su aplicacion en una base concreta.
 - `EmailService` no envia emails reales todavia.
 - `ApplicationDbContext` publica eventos despues de guardar. Si un handler de evento falla, los datos ya fueron persistidos. Para escenarios criticos podria evaluarse un outbox pattern.
 - `BookingRepository.IsOverlappingAsync` reduce el riesgo de reservas solapadas, pero por si solo no garantiza atomicidad ante concurrencia. La concurrencia optimista sobre `Apartment` ayuda, aunque para maxima robustez conviene apoyarse tambien en restricciones de base de datos.
 - El nombre de la cadena de conexion es `DataBase`. Conviene mantenerlo consistente en los archivos de configuracion.
-- Las consultas SQL viven en Application. El parametro de `GetBooking`, sus alias, los tipos de monedas del DTO y el nombre `AmenitiesUpChange`/`AmenitiesUpCharge` tienen discrepancias documentadas en esa capa.
+- Las consultas SQL viven en Application. El DTO ya tiene corregidos importes, monedas y alias de fechas; quedan pendientes el parametro de `GetBooking`, los nombres de tabla y `AmenitiesUpChange`/`AmenitiesUpCharge`.
 - Las fabricas de `Name` y `Rating` pueden rechazar datos al materializarlos. Tener una configuracion EF y una compilacion correcta no demuestra que todos los datos existentes sean validos ni que las entidades se materialicen correctamente.
 - `DateOnlyTypeHandler.Parse` presupone un `DateTime`; conviene probar el contrato con el proveedor configurado.
-- No hay pruebas de integracion, migraciones ni host conectado en este repositorio. El registro de servicios, el modelo EF y el SQL necesitan verificarse conjuntamente antes de dar por operativo el acceso a datos.
+- Api ya conecta las capas y aplica migraciones en Development. No hay proyectos de pruebas de integracion; la materializacion real, el SQL y los conflictos concurrentes requieren comprobaciones contra PostgreSQL.
 
 ## Resumen
 
