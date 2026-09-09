@@ -35,7 +35,7 @@
 
             Faker faker = new();
 
-            List<Object> apartments = new();
+            List<Object> apartments = [];
 
             for (int i = 0; i < 100; i++)
             {
