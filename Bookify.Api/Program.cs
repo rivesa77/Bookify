@@ -24,6 +24,7 @@ if (app.Environment.IsDevelopment())
     });
 
     app.ApplyMigration();
+    app.SeedData();
 }
 else
 {
