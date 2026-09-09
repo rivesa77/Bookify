@@ -96,7 +96,7 @@ El arranque ejecuta `Database.Migrate()` en Development antes de atender solicit
 
 ## Docker Compose
 
-La API se construye con [Bookify.Api/Dockerfile](Bookify.Api/Dockerfile). PostgreSQL usa `postgres:17`, base `bookify` y usuario y clave `postgres`, configurados para desarrollo local. Guarda sus datos en `./containers/database`, montado en `/var/lib/postgresql/data`.
+La API se construye con [Bookify.Api/Dockerfile](Bookify.Api/Dockerfile). PostgreSQL usa `postgres:17`, base `bookify` y usuario y clave `postgres`, configurados para desarrollo local. Guarda sus datos en el volumen administrado `bookify-db-data`, montado en `/var/lib/postgresql/data`. Docker antepone el nombre del proyecto Compose al nombre del volumen. La antigua carpeta `./containers/database` ya no se monta y se conserva sin modificar.
 
 | Servicio | Puerto del equipo | Puerto del contenedor | Uso |
 | --- | --- | --- | --- |
@@ -114,7 +114,7 @@ docker compose logs -f bookify.api
 
 Swagger: [http://localhost:5000/swagger/index.html](http://localhost:5000/swagger/index.html). En Development ya no se aplica `UseHttpsRedirection`, por lo que OpenAPI se puede solicitar por ese mismo puerto HTTP. El override sigue habilitando el listener HTTPS: abrir HTTP no evita un fallo de arranque si Kestrel no puede configurar su certificado.
 
-`depends_on` establece el orden de inicio; el Compose actual no tiene un healthcheck que espere a que PostgreSQL acepte conexiones. Esto puede afectar a `ApplyMigration()` durante el primer arranque. Los montajes de certificados son de solo lectura y no generan ni dan confianza automaticamente a un certificado.
+`depends_on` usa `condition: service_healthy`: Compose espera a que PostgreSQL acepte conexiones TCP antes de iniciar la API. El healthcheck ejecuta `pg_isready -h 127.0.0.1 -U postgres -d bookify`, cada 5 segundos, con timeout de 5 segundos, 12 intentos y un periodo inicial de 10 segundos. Esto ordena el arranque; no reinicia ni recupera automaticamente la API si la base cae mas tarde. Los montajes de certificados son de solo lectura y no generan ni dan confianza automaticamente a un certificado.
 
 Para pgAdmin ejecutado en Windows: host `localhost`, puerto `5432`, base de mantenimiento `bookify`, usuario `postgres` y clave local `postgres`. Si pgAdmin se ejecuta en otro contenedor, la direccion depende de su red; `localhost` designaria ese otro contenedor.
 
@@ -122,7 +122,9 @@ Para pgAdmin ejecutado en Windows: host `localhost`, puerto `5432`, base de mant
 
 En modo rapido, Visual Studio construye la etapa `base`, monta los binarios y puede mantener `DistrolessHelper.dll --wait`. Docker puede mostrar el contenedor activo mientras la API no esta ejecutandose. Las etiquetas de Visual Studio, el entrypoint y los montajes de depuracion ayudan a identificarlo en Inspect.
 
-Compose desde terminal construye la etapa final y su entrada es `dotnet Bookify.Api.dll`. Usa los nombres fijos `Bookify.Api` y `Bookify.db`; no pueden coexistir otros contenedores con esos nombres creados por un proyecto de Visual Studio diferente. Al cambiar de modo hay que detener y retirar los contenedores anteriores, conservando la carpeta de datos si se quiere mantener la base.
+Compose desde terminal construye la etapa final y su entrada es `dotnet Bookify.Api.dll`. Usa los nombres fijos `Bookify.Api` y `Bookify.db`; no pueden coexistir otros contenedores con esos nombres creados por un proyecto de Visual Studio diferente. Para conservar la misma base al cambiar de modo, mantener el mismo nombre de proyecto Compose (opcion `-p`) y su volumen. Otro proyecto obtiene un volumen distinto. `docker compose down` conserva los volumenes nombrados; agregar `-v` los elimina junto con sus datos.
+
+Si PostgreSQL termina con `directory ... exists but is not empty`, comprobar su almacenamiento antes de modificarlo: una carpeta no vacia sin `PG_VERSION` no se reconoce como un cluster inicializado. En el incidente corregido solo quedaron directorios vacios en la carpeta antigua. La API mostraba `Name or service not known` porque el contenedor de base de datos estaba detenido; el nombre `bookify-db` era correcto. Revisar primero los logs de `bookify-db` antes de cambiar ese host o los puertos.
 
 Una imagen final compilada en Release no cambia `ASPNETCORE_ENVIRONMENT`: con el override actual sigue siendo Development. Usar Compose sin Visual Studio no convierte esta configuracion local en un despliegue de produccion.
 

@@ -170,7 +170,7 @@ Visual Studio puede reemplazar el entrypoint por un ayudante de depuracion y mon
 `Dockerfile.original` conserva las etapas de la plantilla y solo copia el proyecto Api antes de `restore`. El Dockerfile activo copia tambien los proyectos referenciados antes de restaurar. Compose apunta expresamente a `Bookify.Api/Dockerfile`; la copia `.original` no interviene en esa construccion.
 
 - Swagger y OpenAPI requieren que el host haya completado `ApplyMigration()` y que el entorno sea Development.
-- La base debe estar lista al arrancar; Compose no espera su disponibilidad mediante healthcheck.
+- La base debe estar lista al arrancar; Compose ahora espera el healthcheck TCP de PostgreSQL mediante `depends_on: condition: service_healthy`. Una caida posterior sigue requiriendo tratamiento de errores y recuperacion.
 - HTTPS requiere configurar y confiar en el certificado local; montar la carpeta no resuelve automaticamente ambas cosas.
 - La migracion genera tablas con mayusculas y Dapper consulta nombres sin comillas en minusculas. El parametro y las columnas de recargo de GetBooking tambien requieren alineacion.
 - No hay middleware propio para excepciones de validacion o errores tecnicos, ni autenticacion o autorizacion.
