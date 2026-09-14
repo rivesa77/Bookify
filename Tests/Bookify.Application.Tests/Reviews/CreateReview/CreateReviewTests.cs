@@ -7,6 +7,7 @@ namespace Bookify.Application.Tests.Reviews.CreateReview
     using Bookify.Domain.Commons;
     using Bookify.Domain.Reviews;
     using Bookify.Domain.Reviews.Events;
+    using Bookify.TestUtilities.Constants;
     using Bookify.TestUtilities.Context;
     using FluentAssertions;
     using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -20,14 +21,21 @@ namespace Bookify.Application.Tests.Reviews.CreateReview
 
         private static Booking CreateBooking(BookingStatus status)
         {
+            Address address = new(
+                ApartmentConstants.Country,
+                ApartmentConstants.State,
+                ApartmentConstants.ZipCode,
+                ApartmentConstants.City,
+                ApartmentConstants.Street);
+
             Apartment apartment = new(
                 Guid.NewGuid(),
-                Name.Create(new string('A', Name.ExactLength)).Value,
-                new Description("Description"),
-                new Address("Spain", "Madrid", "28001", "Madrid", "Street"),
-                new Money(100, Currency.Eur),
-                Money.Zero(Currency.Eur),
-                []);
+                Name.Create(ApartmentConstants.Name).Value,
+                new Description(ApartmentConstants.Description),
+                address,
+                new Money(ApartmentConstants.PriceAmount, Currency.Eur),
+                new Money(ApartmentConstants.CleaningFeeAmount, Currency.Eur),
+                ApartmentConstants.Amenities);
 
             Booking booking = Booking.Reserve(
                 apartment,
@@ -76,7 +84,7 @@ namespace Bookify.Application.Tests.Reviews.CreateReview
             using CancellationTokenSource cancellation = new();
 
             Booking booking = CreateBooking(BookingStatus.Completed);
-            Review? added = null;
+            Review? review = null;
 
             reviewTestContext.Bookings
                 .Setup(r => r.GetByIdAsync(booking.Id, cancellation.Token))
@@ -84,7 +92,7 @@ namespace Bookify.Application.Tests.Reviews.CreateReview
 
             reviewTestContext.Reviews
                 .Setup(r => r.Add(It.IsAny<Review>()))
-                .Callback<Review>(r => added = r);
+                .Callback<Review>(r => review = r);
 
             reviewTestContext.UnitOfWork
                 .Setup(u => u.SaveChangesAsync(cancellation.Token))
@@ -94,34 +102,37 @@ namespace Bookify.Application.Tests.Reviews.CreateReview
 
             // Act
             Result<Guid> result = await reviewTestContext.Sender.Send(
-                new CreateReviewCommand(booking.Id, rating, comment),
+                new CreateReviewCommand(
+                    booking.Id,
+                    rating,
+                    comment),
                 cancellation.Token);
 
             // Assert
             result.IsSuccess.Should().BeTrue();
 
-            added.Should().NotBeNull();
+            review.Should().NotBeNull();
 
-            result.Value.Should().NotBeEmpty().And.Be(added!.Id);
+            result.Value.Should().NotBeEmpty().And.Be(review!.Id);
 
-            added.BookingId.Should().Be(booking.Id);
+            review.BookingId.Should().Be(booking.Id);
 
-            added.ApartmentId.Should().Be(booking.ApartmentId);
+            review.ApartmentId.Should().Be(booking.ApartmentId);
 
-            added.UserId.Should().Be(booking.UserId);
+            review.UserId.Should().Be(booking.UserId);
 
-            added.Rating.Value.Should().Be(rating);
+            review.Rating.Value.Should().Be(rating);
 
-            added.Comment.Value.Should().Be(comment);
+            review.Comment.Value.Should().Be(comment);
 
-            added.CreatedOnUtc.Should().Be(UtcNow);
+            review.CreatedOnUtc.Should().Be(UtcNow);
 
-            added.GetDomainEvents().Should().ContainSingle()
-                .Which.Should().Be(new ReviewCreatedDomainEvent(added.Id));
+            review.GetDomainEvents().Should().ContainSingle()
+                .Which.Should().Be(new ReviewCreatedDomainEvent(review.Id));
 
             reviewTestContext.Bookings.Verify(r => r.GetByIdAsync(booking.Id, cancellation.Token), Times.Once);
 
-            reviewTestContext.Reviews.Verify(r => r.Add(added), Times.Once);
+            reviewTestContext.Reviews.Verify(r => r.Add(review), Times.Once);
 
             reviewTestContext.UnitOfWork.Verify(u => u.SaveChangesAsync(cancellation.Token), Times.Once);
 
