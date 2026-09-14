@@ -5,6 +5,7 @@
     using Bookify.Application.Apartments.SearchApartments;
     using Bookify.Domain.Abstractions;
     using Bookify.Domain.Apartments;
+    using Bookify.Domain.Commons;
     using Bookify.TestUtilities.Constants;
     using Bookify.TestUtilities.Context;
     using FluentAssertions;
@@ -20,14 +21,38 @@
         public async Task Controller_Should_Return201WithPersistedId()
         {
             // Arrange
+            Address address = new(
+                ApartmentConstants.Country,
+                ApartmentConstants.State,
+                ApartmentConstants.ZipCode,
+                ApartmentConstants.City,
+                ApartmentConstants.Street);
+
+            Apartment apartment = new(
+                Guid.NewGuid(),
+                Name.Create(ApartmentConstants.Name).Value,
+                new Description(ApartmentConstants.Description),
+                address,
+                new Money(ApartmentConstants.PriceAmount, Currency.Eur),
+                new Money(ApartmentConstants.CleaningFeeAmount, Currency.Eur),
+                [Amenity.Wifi, Amenity.Parking]);
+
             using ApartmentTestContext apartmentTestContext = new();
 
             apartmentTestContext.Apartments
-                .Setup(r => r.Add(It.IsAny<Apartment>()));
+            .Setup(r => r.Add(It.Is<Apartment>(a =>
+                a.Name == apartment.Name &&
+                a.Description == apartment.Description &&
+                a.Address == apartment.Address &&
+                a.Price == apartment.Price &&
+                a.CleaningFeeAmount == apartment.CleaningFeeAmount &&
+                a.Amenities.SequenceEqual(apartment.Amenities))))
+                .Verifiable(Times.Once);
 
             apartmentTestContext.UnitOfWork
                 .Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
-                .ReturnsAsync(1);
+                .ReturnsAsync(1)
+                .Verifiable(Times.Once);
 
             ApartmentsController controller = new(apartmentTestContext.Sender);
 
@@ -63,6 +88,12 @@
                 .Which
                 .Should()
                 .NotBeEmpty();
+
+            apartmentTestContext.Apartments.VerifyAll();
+            apartmentTestContext.UnitOfWork.VerifyAll();
+
+            apartmentTestContext.Apartments.VerifyNoOtherCalls();
+            apartmentTestContext.UnitOfWork.VerifyNoOtherCalls();
         }
 
         [TestMethod]
