@@ -33,7 +33,8 @@ namespace Bookify.Application.Tests.Reviews.CreateReview
                 apartment,
                 Guid.NewGuid(),
                 DateRange.Create(new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 5)),
-                UtcNow, new PricingServices());
+                UtcNow,
+                new PricingServices());
 
             if (status == BookingStatus.Rejected)
             {
