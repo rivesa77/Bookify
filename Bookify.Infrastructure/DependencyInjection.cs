@@ -7,6 +7,7 @@
     using Bookify.Domain.Apartments;
     using Bookify.Domain.Bookings;
     using Bookify.Domain.Users;
+    using Bookify.Domain.Reviews;
     using Bookify.Infrastructure.Clock;
     using Bookify.Infrastructure.Data;
     using Bookify.Infrastructure.Email;
@@ -27,6 +28,7 @@
             services
                 .AddScoped<IApartmentRepository, ApartmentRepository>()
                 .AddScoped<IBookingRepository, BookingRepository>()
+                .AddScoped<IReviewRepository, ReviewRepository>()
                 .AddScoped<IUserRepository, UserRepository>();
 
             services

@@ -696,6 +696,18 @@ Por tanto, esta query expresa el contrato de lectura, pero necesita resolver esa
 
 Las correcciones de `BookingResponse` no modifican los parametros ni los nombres de tabla y columnas del SQL. La referencia para comprobar el esquema es [la migracion inicial](../Bookify.Infrastructure/Migrations/20260909102321_Initial_Database.cs), no solo las convenciones de nombres configuradas en EF.
 
+## Reviews/CreateReview
+
+- [CreateReviewCommand.cs](Reviews/CreateReview/CreateReviewCommand.cs): implementa `ICommand<Guid>` y transporta `BookingId`, `Rating` y `Comment`.
+- [CreateReviewCommandValidator.cs](Reviews/CreateReview/CreateReviewCommandValidator.cs): exige identificador no vacio, puntuacion de 1 a 5 y comentario no vacio de hasta 200 caracteres.
+- [CreateReviewCommandHandler.cs](Reviews/CreateReview/CreateReviewCommandHandler.cs): coordina `IBookingRepository`, `IReviewRepository`, `IUnitOfWork` e `IDateTimeProvider`. El escaneo de `AddApplication()` registra automaticamente handler y validador.
+
+El handler consulta la reserva con el token de cancelacion y devuelve `BookingErrors.NotFound` si no existe. Construye la puntuacion con `Rating.Create`, propagando su error, y llama a `Review.Create` con la reserva, comentario y fecha UTC. Esa fabrica exige estado `Completed` y obtiene de la reserva los identificadores de autor y apartamento. Si rechaza la operacion, no se escribe nada.
+
+Si tiene exito, registra la resena mediante `IReviewRepository.Add`, espera una unica llamada a `SaveChangesAsync(cancellationToken)` y devuelve el id. Los errores tecnicos se propagan al middleware de Api. El handler no publica por duplicado el evento: la fabrica lo acumula y el contexto real lo publica despues de guardar. No se crea un consumidor del evento sin una reaccion de negocio definida ni se agregan reglas de unicidad o autorizacion.
+
+Las pruebas de `Tests/Bookify.UnitTests/Reviews/CreateReview/CreateReviewTests.cs` usan MSTest, FluentAssertions y mocks estrictos. Cubren reserva inexistente, los cuatro estados no elegibles, validacion, mapeo, evento acumulado, reloj, token, escrituras, fallo de guardado y respuestas HTTP del controlador. No verifican la persistencia ni la publicacion real contra PostgreSQL.
+
 ## Apartments/CreateApartment
 
 `CreateApartmentCommand` implementa `ICommand<Guid>` y transporta nombre, descripcion, pais, estado, codigo postal, ciudad, calle, importe del precio, importe de limpieza, codigo de moneda y lista de `Amenity`. Los datos son independientes del contrato HTTP `CreateApartmentRequest`.
@@ -901,7 +913,7 @@ Para reaccionar a un evento, implementar `INotificationHandler<TDomainEvent>`. E
 - Las llamadas Dapper y la publicacion actual de eventos no reciben el token del request; `IEmailService` tampoco lo admite.
 - No hay autorizacion ni reglas de fechas futuras en los casos de uso actuales.
 - El correo es una implementacion vacia y el plazo de diez minutos solo aparece en el texto del mensaje.
-- No existen comandos para confirmar, cancelar, rechazar, completar reservas, crear usuarios o dejar resenas. Algunas operaciones estan implementadas solo en Domain.
+- Existe `CreateReviewCommand` para dejar resenas. No existen comandos para confirmar, cancelar, rechazar, completar reservas ni crear usuarios; esas operaciones siguen implementadas solo en Domain.
 - El host Api esta conectado y existe la migracion inicial. Hay pruebas de arquitectura y pruebas del alta con dependencias simuladas; estas no verifican las consultas Dapper, la persistencia real ni los conflictos contra PostgreSQL.
 
 ## Resumen

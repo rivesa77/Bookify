@@ -388,7 +388,7 @@ Responsabilidades:
 
 La conversion de `Rating` garantiza que al materializar desde base de datos se use el mismo objeto de valor del dominio.
 
-Si la puntuacion almacenada no esta entre 1 y 5, la fabrica devuelve fallo y `.Value` lanza una excepcion. No hay en esta configuracion una restriccion explicita de rango ni un indice unico por `BookingId`. Tampoco existe `IReviewRepository`, su implementacion o un caso de uso de resenas en Application actualmente.
+Si la puntuacion almacenada no esta entre 1 y 5, la fabrica devuelve fallo y `.Value` lanza una excepcion. No hay en esta configuracion una restriccion explicita de rango ni un indice unico por `BookingId`. El alta ya se implementa mediante `CreateReviewCommand`, `IReviewRepository` y `ReviewRepository`, sin cambiar ese esquema.
 
 ### UserConfiguration
 
@@ -555,6 +555,12 @@ Repository<Apartment>
 ```
 
 No agrega metodos propios porque hereda `GetByIdAsync` y `Add` de la base generica, que satisfacen el contrato actual.
+
+### ReviewRepository
+
+[ReviewRepository.cs](Repositories/ReviewRepository.cs) es una clase interna sellada que hereda `Repository<Review>` e implementa `IReviewRepository`. Su constructor recibe el contexto scoped. El `Add` heredado registra la resena en EF; el handler confirma la escritura mediante `IUnitOfWork`, que resuelve el mismo contexto. `AddInfrastructure` registra `IReviewRepository -> ReviewRepository` como scoped junto a los otros repositorios.
+
+Reutiliza `ReviewConfiguration` y la tabla `Reviews` de la migracion inicial. El contexto publica los eventos acumulados despues del guardado, incluido `ReviewCreatedDomainEvent`, que todavia no tiene consumidor. No se necesita una migracion para conectar este flujo ni se agregan restricciones de unicidad por reserva.
 
 ### UserRepository
 

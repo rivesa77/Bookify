@@ -102,6 +102,7 @@ Todos los archivos de codigo de la capa estan relacionados aqui. Los apartados p
 | [Bookings/Events/BookingCompletedDomainEvent.cs](Bookings/Events/BookingCompletedDomainEvent.cs) | Notifica finalizacion mediante `BookingId`. |
 | [Bookings/Events/BookingCancelledDomainEvent.cs](Bookings/Events/BookingCancelledDomainEvent.cs) | Notifica cancelacion mediante `BookingId`. |
 | [Reviews/Review.cs](Reviews/Review.cs) | Fabrica de resenas para reservas completadas. |
+| [Reviews/IReviewRepository.cs](Reviews/IReviewRepository.cs) | Contrato para agregar una resena al contexto de persistencia. |
 | [Reviews/Rating.cs](Reviews/Rating.cs) | Puntuacion con fabrica de validacion. |
 | [Reviews/Comment.cs](Reviews/Comment.cs) | Texto de la resena. |
 | [Reviews/ReviewErrors.cs](Reviews/ReviewErrors.cs) | Error de reserva no elegible para resena. |
@@ -933,7 +934,7 @@ Si la resena se crea correctamente:
 - Levanta `ReviewCreatedDomainEvent`.
 - Devuelve un `Result<Review>` exitoso.
 
-El autor se copia de `booking.UserId`; no se recibe como parametro independiente. El metodo no comprueba si ya existe otra resena para la reserva ni autentica al llamador. No hay contrato de repositorio de resenas ni caso de uso de Application para guardarlas actualmente.
+El autor se copia de `booking.UserId`; no se recibe como parametro independiente. El metodo no comprueba si ya existe otra resena para la reserva ni autentica al llamador. `IReviewRepository` expone ahora `void Add(Review review)`. `CreateReviewCommandHandler` utiliza la fabrica y el repositorio, y guarda mediante `IUnitOfWork`; `ReviewRepository` implementa el contrato en Infrastructure. El evento de creacion sigue sin handler, aunque se acumula y puede publicarse al guardar.
 
 ### Rating
 

@@ -129,6 +129,24 @@ Invoke-RestMethod -Method Post -Uri 'http://localhost:5285/api/apartments' -Cont
 
 En Compose utilizar el puerto publicado 5000. El ejemplo rellena el nombre para cumplir la regla actual; el endpoint no rellena ni recorta nombres silenciosamente. No hace falta otra migracion: se usan las tablas y columnas ya mapeadas por EF. Las restricciones de autorizacion siguen siendo las del proyecto actual, que todavia no implementa autenticacion.
 
+## Alta de resenas
+
+`POST /api/reviews` se implementa en [ReviewsController](Controllers/Reviews/ReviewsController.cs) y recibe [CreateReviewRequest](Controllers/Reviews/CreateReviewRequest.cs). El controlador envia `CreateReviewCommand` mediante `ISender`, propagando el token de la solicitud.
+
+```json
+{
+  "bookingId": "11111111-1111-1111-1111-111111111111",
+  "rating": 5,
+  "comment": "Muy buena estancia y apartamento limpio."
+}
+```
+
+El id debe corresponder a una reserva existente y completada. La puntuacion admite de 1 a 5 y el comentario es obligatorio, con un maximo de 200 caracteres. El usuario y apartamento se obtienen de la reserva; no se aceptan como identificadores independientes del cuerpo. La fecha procede del reloj UTC de la aplicacion.
+
+Devuelve 201 con el GUID creado, 404 con `BookingErrors.NotFound` si la reserva no existe o 400 con `ReviewErrors.NotEligible` si no esta completada. El middleware convierte errores del validador en 400 y errores tecnicos en 500. No se proporciona Location porque no existe un GET de resena por id.
+
+Reutiliza `Review.Create` y la tabla `Reviews`, sin nueva migracion. El evento `ReviewCreatedDomainEvent` se acumula en el dominio y se publica al guardar; sigue sin tener un handler ni efectos externos asociados. No se agrega una regla de unicidad por reserva ni autenticacion: copiar el autor de la reserva no autoriza al solicitante HTTP. Para usar este endpoint, la reserva debe estar ya completada; no se incorpora aqui un endpoint de finalizacion.
+
 ## Controllers/Bookings/BookingsController.cs
 
 Hereda de `ControllerBase`, lleva `[ApiController]`, usa `api/bookings` y recibe `ISender`. Tiene dos acciones:
@@ -204,6 +222,6 @@ Visual Studio puede reemplazar el entrypoint por un ayudante de depuracion y mon
 - HTTPS requiere configurar y confiar en el certificado local; montar la carpeta no resuelve automaticamente ambas cosas.
 - La migracion genera tablas con mayusculas y Dapper consulta nombres sin comillas en minusculas. El parametro y las columnas de recargo de GetBooking tambien requieren alineacion.
 - El middleware propio devuelve 400 para `ValidationException` y 500 para otras excepciones. No hay autenticacion o autorizacion.
-- Existe alta de apartamentos mediante `POST /api/apartments`. No existen endpoints de confirmacion, cancelacion, altas de usuarios ni resenas.
+- Existen altas de apartamentos y resenas mediante `POST /api/apartments` y `POST /api/reviews`. No existen endpoints de confirmacion, cancelacion ni altas de usuarios.
 
 Al agregar un endpoint, definir el contrato HTTP, enviar el mensaje apropiado por `ISender`, comprobar los resultados y concretar el tratamiento de excepciones. Mantener las reglas y el guardado en las capas que ya los poseen.

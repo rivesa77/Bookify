@@ -70,7 +70,8 @@ Las pruebas del flujo se encuentran en `Tests/Bookify.UnitTests/CreateApartmentT
 | Consultar reserva | `GET /api/bookings/{id}`; query y DTO existentes, con discrepancias SQL pendientes. |
 | Reservar | `POST /api/bookings`; comando, validacion, dominio y persistencia conectados. Requiere usuario y apartamento existentes. |
 | Confirmar, rechazar, completar y cancelar | Metodos y eventos en Domain; todavia sin comandos ni endpoints. |
-| Crear usuario y resena | Fabricas de dominio y mapeos; sin endpoints de alta. |
+| Crear resena | `POST /api/reviews`, comando, validador y repositorio EF; exige una reserva completada. Ver [contrato y ejemplo](Bookify.Api/readme.md#alta-de-resenas). |
+| Crear usuario | Fabrica de dominio y mapeo; sin endpoint de alta. |
 | Documentacion interactiva | `/swagger/index.html` consume `/openapi/v1.json`, solo en Development. |
 | Migraciones | `20260909102321_Initial_Database` en Infrastructure y aplicacion automatica al arrancar en Development. |
 
