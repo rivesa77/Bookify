@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FluentAssertions" Version="8.10.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.4" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.6.0" />
+    <PackageReference Include="MSTest.TestAdapter" Version="4.4.0" />
+    <PackageReference Include="MSTest.TestFramework" Version="4.4.0" />
+    <PackageReference Include="Moq" Version="4.20.72" />
+	<PackageReference Include="MediatR" Version="14.2.0" />
+	<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Bookify.Application\Bookify.Application.csproj" />
+    <ProjectReference Include="..\..\Bookify.Domain\Bookify.Domain.csproj" />
+  </ItemGroup>
+
+</Project>
