@@ -11,6 +11,7 @@
         public Mock<IUnitOfWork> UnitOfWork { get; } = new(MockBehavior.Strict);
 
         private ServiceProvider? services;
+
         public ISender Sender => (services ?? throw new InvalidOperationException(
             "RegisterContext must be called before resolving services."))
             .GetRequiredService<ISender>();
