@@ -95,7 +95,7 @@ namespace Bookify.Application.Tests.Apartments.CreateApartment
 
             CreateApartmentCommand command = invalidField switch
             {
-                "name" => valid with { Name = "Too short" },
+                "name" => valid with { Name = new string('A', 201) },
                 "description" => valid with { Description = new string('A', 2001) },
                 "address" => valid with { Street = " " },
                 "price" => valid with { PriceAmount = 0 },
