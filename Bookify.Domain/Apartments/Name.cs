@@ -20,7 +20,7 @@
                 return Result.Failure<Name>(NameErrors.Empty);
             }
 
-            if (value.Length != ExactLength)
+            if (value.Length > ExactLength)
             {
                 return Result.Failure<Name>(NameErrors.InvalidLength);
             }
