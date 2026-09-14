@@ -1,5 +1,7 @@
 ﻿namespace Bookify.TestUtilities.Constants
 {
+    using Bookify.Domain.Apartments;
+
     public static class ApartmentConstants
     {
         public const string Name = "Apartment Name";
@@ -21,5 +23,7 @@
         public const decimal CleaningFeeAmount = 2.35M;
 
         public const string Currency = "EUR";
+
+        public static readonly List<Amenity> Amenities = [Amenity.Wifi, Amenity.Parking];
     }
 }

@@ -35,7 +35,7 @@
                 address,
                 new Money(ApartmentConstants.PriceAmount, Currency.Eur),
                 new Money(ApartmentConstants.CleaningFeeAmount, Currency.Eur),
-                [Amenity.Wifi, Amenity.Parking]);
+                ApartmentConstants.Amenities);
 
             using ApartmentTestContext apartmentTestContext = new();
 
