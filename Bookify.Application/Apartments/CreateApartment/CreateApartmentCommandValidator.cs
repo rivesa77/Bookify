@@ -8,7 +8,7 @@ namespace Bookify.Application.Apartments.CreateApartment
     {
         public CreateApartmentCommandValidator()
         {
-            RuleFor(command => command.Name).NotEmpty().Length(Name.ExactLength);
+            RuleFor(command => command.Name).NotEmpty().MaximumLength(Name.ExactLength);
             RuleFor(command => command.Description).NotEmpty().MaximumLength(2000);
             RuleFor(command => command.Country).NotEmpty();
             RuleFor(command => command.State).NotEmpty();
