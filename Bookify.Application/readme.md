@@ -103,6 +103,8 @@ Versiones declaradas en el archivo de proyecto: Dapper `2.1.79`, FluentValidatio
 
 ## Inventario de archivos
 
+El alta incorpora [CreateApartmentCommand](Apartments/CreateApartment/CreateApartmentCommand.cs), [CreateApartmentCommandValidator](Apartments/CreateApartment/CreateApartmentCommandValidator.cs) y [CreateApartmentCommandHandler](Apartments/CreateApartment/CreateApartmentCommandHandler.cs), descritos en el apartado siguiente de creacion de apartamentos.
+
 Esta tabla cubre todos los archivos de codigo y configuracion de la capa. Los apartados siguientes explican su funcionamiento; `bin/` y `obj/` contienen salidas generadas.
 
 | Archivo | Responsabilidad |
@@ -694,6 +696,18 @@ Por tanto, esta query expresa el contrato de lectura, pero necesita resolver esa
 
 Las correcciones de `BookingResponse` no modifican los parametros ni los nombres de tabla y columnas del SQL. La referencia para comprobar el esquema es [la migracion inicial](../Bookify.Infrastructure/Migrations/20260909102321_Initial_Database.cs), no solo las convenciones de nombres configuradas en EF.
 
+## Apartments/CreateApartment
+
+`CreateApartmentCommand` implementa `ICommand<Guid>` y transporta nombre, descripcion, pais, estado, codigo postal, ciudad, calle, importe del precio, importe de limpieza, codigo de moneda y lista de `Amenity`. Los datos son independientes del contrato HTTP `CreateApartmentRequest`.
+
+`CreateApartmentCommandValidator` exige nombre no vacio de exactamente `Name.ExactLength` (200) caracteres, descripcion no vacia de hasta 2000, los cinco campos de direccion no vacios, precio mayor que cero y limpieza mayor o igual a cero. La moneda debe pertenecer a `Currency.All` (EUR o USD, en mayusculas). Las comodidades admiten lista vacia, pero no lista nula, valores de enum desconocidos ni repetidos; evitar duplicados impide recargos duplicados en reservas futuras.
+
+`CreateApartmentCommandHandler` implementa `ICommandHandler<CreateApartmentCommand, Guid>`. Reconstruye el nombre con `Name.Create` y propaga su fallo si procede, obtiene la moneda admitida, crea los objetos `Description`, `Address` y `Money`, y construye `Apartment` con un GUID nuevo. Utiliza la misma moneda para precio y limpieza y copia la lista de comodidades para no compartir su mutabilidad con la entrada. La fecha de ultima reserva queda nula.
+
+El handler llama a `IApartmentRepository.Add` y espera `IUnitOfWork.SaveChangesAsync(cancellationToken)` antes de devolver el id. El guardado ocurre una sola vez; los errores tecnicos se propagan al middleware. No genera eventos de alta porque actualmente no existe un evento de creacion de apartamento en el dominio.
+
+El escaneo de `AddApplication()` descubre automaticamente el handler y el validador. Debe invocarse mediante `ISender.Send` para ejecutar la validacion y el logging, como hace `POST /api/apartments`. El constructor de la entidad no sustituye esa validacion de entrada. No se agregan reglas de unicidad de nombre ni comprobaciones de propietario, que no existen en el modelo actual.
+
 ## Apartments/SearchApartments
 
 Esta carpeta implementa la busqueda de apartamentos disponibles.
@@ -800,7 +814,7 @@ builder.Services.AddInfrastructure(builder.Configuration);
 
 Este registro ya existe en `Bookify.Api/Program.cs`. El host proporciona logging y scopes por solicitud; los controladores reciben `ISender`. Configura `ConnectionStrings:Database` (equivalente a `DataBase` en la configuracion de .NET) y en Development llama despues a `ApplyMigration()`. El registro de servicios por si solo no crea ni migra tablas.
 
-La [guia de Api](../Bookify.Api/readme.md) explica las rutas y respuestas: GET de reserva devuelve `200` o `404` segun el resultado; POST devuelve `201` con el id y `Location`, o `400` con `Error`. La API no tiene un manejador propio para convertir `ValidationException` de Application en una respuesta estructurada.
+La [guia de Api](../Bookify.Api/readme.md) explica las rutas y respuestas: GET de reserva devuelve `200` o `404` segun el resultado; POST de reserva devuelve `201` con el id y `Location`, o `400` con `Error`. POST de apartamento devuelve `201` con el id, sin `Location`. El middleware de la API convierte `ValidationException` de Application en una respuesta estructurada con estado 400.
 
 Despues, desde un endpoint, controller o servicio que reciba `ISender` por constructor, se usa MediatR:
 
@@ -888,7 +902,7 @@ Para reaccionar a un evento, implementar `INotificationHandler<TDomainEvent>`. E
 - No hay autorizacion ni reglas de fechas futuras en los casos de uso actuales.
 - El correo es una implementacion vacia y el plazo de diez minutos solo aparece en el texto del mensaje.
 - No existen comandos para confirmar, cancelar, rechazar, completar reservas, crear usuarios o dejar resenas. Algunas operaciones estan implementadas solo en Domain.
-- El host Api ya esta conectado y existe la migracion inicial. No hay proyectos de pruebas en la solucion; la generacion del esquema no verifica las consultas Dapper, los datos materializados ni los conflictos reales.
+- El host Api esta conectado y existe la migracion inicial. Hay pruebas de arquitectura y pruebas del alta con dependencias simuladas; estas no verifican las consultas Dapper, la persistencia real ni los conflictos contra PostgreSQL.
 
 ## Resumen
 

@@ -482,7 +482,7 @@ Se usan desde `Name.Create` para evitar que se construyan nombres invalidos.
 
 ### IApartmentRepository
 
-`IApartmentRepository` es el contrato para obtener apartamentos.
+`IApartmentRepository` es el contrato para obtener y agregar apartamentos. Ademas de `GetByIdAsync`, expone `void Add(Apartment apartment)` para el alta. `Add` registra la entidad; la persistencia se confirma mediante `IUnitOfWork.SaveChangesAsync`. El nuevo comando `CreateApartmentCommand` valida la entrada y usa el constructor publico existente, sin alterar las reglas de nombre ni los constructores de materializacion.
 
 ```csharp
 Task<Apartment?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);

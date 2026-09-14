@@ -546,13 +546,15 @@ Este metodo marca la entidad para ser insertada cuando se llame a `SaveChangesAs
 
 Implementa `IApartmentRepository`.
 
+El contrato ahora expone tambien `void Add(Apartment apartment)`. La implementacion concreta ya hereda ese metodo publico de `Repository<Apartment>`: registra la entidad en el contexto como pendiente de insercion. `CreateApartmentCommandHandler` llama despues a `IUnitOfWork.SaveChangesAsync`, que resuelve el mismo contexto scoped. No se necesita duplicar `Add`, registrar otro servicio ni modificar el esquema para el alta. Los objetos owned de direccion y dinero se guardan con los mapeos existentes.
+
 Hereda de:
 
 ```csharp
 Repository<Apartment>
 ```
 
-No agrega metodos propios porque actualmente solo necesita `GetByIdAsync`.
+No agrega metodos propios porque hereda `GetByIdAsync` y `Add` de la base generica, que satisfacen el contrato actual.
 
 ### UserRepository
 

@@ -30,7 +30,7 @@ Esta separacion permite que las reglas de una reserva no dependan de un controla
 
 | Archivo | Funcion actual |
 | --- | --- |
-| [Bookify.slnx](Bookify.slnx) | Agrupa Api, Application, Domain e Infrastructure bajo `/Scr/`, y Docker Compose. `/Tests/` es una carpeta logica sin proyectos de pruebas. |
+| [Bookify.slnx](Bookify.slnx) | Agrupa Api, Application, Domain e Infrastructure bajo `/Scr/`, Docker Compose y los proyectos de arquitectura y pruebas unitarias bajo `/Tests/`. |
 | [Bookify.csproj](Bookify.csproj) | Proyecto de consola residual, fuera de la solucion y sin referencias a las capas. No es el host actual; ya no existe `Program.cs` en la raiz. |
 | [docker-compose.yml](docker-compose.yml) | Define API, PostgreSQL 17, imagen, dependencia, credenciales locales y persistencia de datos. |
 | [docker-compose.override.yml](docker-compose.override.yml) | Configuracion local: Development, puertos HTTP/HTTPS y montajes de secretos y certificados de Windows. |
@@ -60,6 +60,10 @@ Los eventos se publican despues de guardar y forman parte del tiempo de la solic
 
 ## Capacidades actuales
 
+El alta de apartamentos esta disponible en `POST /api/apartments`: contrato HTTP, comando, FluentValidation, handler y guardado EF mediante repositorio/unidad de trabajo. Devuelve `201` con el id. No necesita una migracion adicional. Consultar [contrato y ejemplo de alta](Bookify.Api/readme.md#alta-de-apartamentos), incluida la regla actual de nombre de exactamente 200 caracteres.
+
+Las pruebas del flujo se encuentran en `Tests/Bookify.UnitTests/CreateApartmentTests.cs`: ejercitan MediatR con repositorio y unidad de trabajo simulados, validacion, mapeo, propagacion del token, errores de guardado y respuesta del controlador. Las reglas de arquitectura siguen en `Tests/Bookify.ArchitectureTest`.
+
 | Operacion | Estado |
 | --- | --- |
 | Buscar apartamentos | `GET /api/apartments?starDate=2026-10-01&endDate=2026-10-05`. El parametro actual se llama literalmente `starDate`. |
@@ -70,7 +74,7 @@ Los eventos se publican despues de guardar y forman parte del tiempo de la solic
 | Documentacion interactiva | `/swagger/index.html` consume `/openapi/v1.json`, solo en Development. |
 | Migraciones | `20260909102321_Initial_Database` en Infrastructure y aplicacion automatica al arrancar en Development. |
 
-`Result` representa fallos de negocio. El controlador de reserva los convierte en `400`; el de consulta devuelve `404` ante un resultado fallido. La excepcion de FluentValidation de Application y otras excepciones tecnicas no tienen un manejador HTTP propio configurado.
+`Result` representa fallos de negocio. Los controladores de alta los convierten en `400`; la consulta de reserva devuelve `404` ante un resultado fallido. El middleware propio convierte `ValidationException` de Application en 400 y otros errores tecnicos en 500.
 
 ## Ejecucion local
 
@@ -137,6 +141,6 @@ Una imagen final compilada en Release no cambia `ASPNETCORE_ENVIRONMENT`: con el
 - `GetBookingQueryHandler` sigue enviando `Id` cuando SQL solicita `@BookingId`, y consulta `amenities_up_charge_*` cuando la migracion contiene `amenities_up_change_*`.
 - `Address` sigue siendo opcional para EF; sus columnas admiten `NULL`. El constructor vacio no establece obligatoriedad de campos ni navegaciones.
 - El conflicto de EF se traduce a `ConcurrencyException` y despues a `BookingErrors.Overlap`. El token sombra del apartamento usa `xmin` y requiere una actualizacion efectiva del apartamento; no protege todas las entidades ni cualquier insercion por otros medios.
-- No hay proyectos de pruebas, autenticacion ni autorizacion configuradas. Estas guias no afirman una validacion integral de reservas concurrentes o de las consultas SQL.
+- Hay pruebas de arquitectura y del alta de apartamentos con repositorios simulados. No hay autenticacion ni autorizacion configuradas. Estas guias no afirman una validacion integral de reservas concurrentes o de las consultas SQL.
 
 Para profundizar, seguir las guias en el orden Domain, Application, Infrastructure y Api. Cada una incluye el inventario de archivos y explica las decisiones y el comportamiento actual de su capa.

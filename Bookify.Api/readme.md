@@ -11,7 +11,8 @@ Esta es la capa de entrada HTTP y el host ejecutable de Bookify. Recibe solicitu
 | [Bookify.Api.csproj](Bookify.Api.csproj) | SDK web, dependencias, referencias, identificador de secretos y enlace con Compose. |
 | [Program.cs](Program.cs) | Registro de servicios, construccion y ejecucion del host y pipeline por entorno. |
 | [Extensions/ApplicationBuilderExtensions.cs](Extensions/ApplicationBuilderExtensions.cs) | Metodo `ApplyMigration`, que crea un scope y aplica migraciones con EF Core. |
-| [Controllers/Apartments/ApartmentsController.cs](Controllers/Apartments/ApartmentsController.cs) | Consulta HTTP de disponibilidad mediante `SearchApartmentsQuery`. |
+| [Controllers/Apartments/ApartmentsController.cs](Controllers/Apartments/ApartmentsController.cs) | Busqueda de disponibilidad y alta mediante `SearchApartmentsQuery` y `CreateApartmentCommand`. |
+| [Controllers/Apartments/CreateApartmentRequest.cs](Controllers/Apartments/CreateApartmentRequest.cs) | Cuerpo JSON para dar de alta un apartamento. |
 | [Controllers/Bookings/BookingsController.cs](Controllers/Bookings/BookingsController.cs) | Consulta por id y creacion de reservas mediante MediatR. |
 | [Controllers/Bookings/ReserveBookingRequest.cs](Controllers/Bookings/ReserveBookingRequest.cs) | Contrato del cuerpo JSON para reservar. |
 | [appsettings.json](appsettings.json) | Niveles generales de logging y `AllowedHosts`. |
@@ -65,7 +66,7 @@ El arranque sigue este orden:
 
 El registro `AddOpenApi()` se ejecuta siempre; el endpoint solo se publica en Development. `MapOpenApi()` proporciona JSON y `UseSwaggerUI()` proporciona la interfaz. Esta ultima se configura con `SwaggerEndpoint("/openapi/v1.json", "Bookify API")`, por lo que no usa `/swagger/v1/swagger.json`.
 
-No hay un endpoint para `/`, middleware propio de excepciones, autenticacion, autorizacion ni health checks configurados. Una respuesta 404 en la raiz no demuestra que la API este detenida.
+`UseCustomExceptionHandler()` registra el middleware propio de excepciones antes de los controladores. No hay un endpoint para `/`, autenticacion, autorizacion ni health checks HTTP configurados. Una respuesta 404 en la raiz no demuestra que la API este detenida.
 
 ## Extensions/ApplicationBuilderExtensions.cs
 
@@ -98,6 +99,35 @@ GET http://localhost:5000/api/apartments?starDate=2026-10-01&endDate=2026-10-05
 El nombre de entrada es literalmente `starDate`, sin la segunda `t` de `startDate`. No hay un alias configurado. Los parametros de fecha proceden de la query string y el token procede de la solicitud.
 
 El resultado exitoso es un array de `ApartmentResponse`: id, nombre, descripcion, precio base, moneda y direccion. No es el precio total de la estancia. Application devuelve una lista vacia si inicio es posterior al fin. El controlador no comprueba `IsFailure` antes de leer `Value`, de modo que un fallo de resultado futuro lanzaria una excepcion. Las excepciones SQL se propagan.
+
+## Alta de apartamentos
+
+`POST /api/apartments` recibe `CreateApartmentRequest`, un record con `Name`, `Description`, los cinco campos planos de direccion (`Country`, `State`, `ZipCode`, `City`, `Street`), `PriceAmount`, `CleaningFeeAmount`, `Currency` y `List<Amenity> Amenities`. `ApartmentsController.CreateApartment` convierte la entrada en `CreateApartmentCommand` y envia el token de la solicitud a MediatR.
+
+El pipeline valida la entrada y el handler guarda mediante el repositorio y la unidad de trabajo. La respuesta exitosa es `201 Created` con el GUID como cuerpo. No se agrega un encabezado Location hacia una consulta por id porque esa ruta de apartamentos no existe actualmente. Los fallos `Result` se convierten en `400` con `Error`; las excepciones de validacion del pipeline se traducen a `400` por el middleware `ExceptionHandlingMiddleware`, ya registrado mediante `UseCustomExceptionHandler()`.
+
+El nombre conserva la regla actual de exactamente 200 caracteres. Descripcion y direccion son obligatorias; descripcion admite hasta 2000 caracteres. Precio debe ser positivo, limpieza admite cero, moneda EUR o USD y comodidades numericas de 1 a 10 sin duplicados; `[]` es valido. El alta utiliza una moneda comun para precio y limpieza.
+
+Ejemplo desde PowerShell, con la API ejecutandose en el perfil HTTP local:
+
+```powershell
+$apartment = @{
+    name = 'Apartamento Madrid'.PadRight(200, '.')
+    description = 'Apartamento con wifi y aparcamiento'
+    country = 'Spain'
+    state = 'Madrid'
+    zipCode = '28001'
+    city = 'Madrid'
+    street = 'Calle Mayor 1'
+    priceAmount = 100
+    cleaningFeeAmount = 25
+    currency = 'EUR'
+    amenities = @(1, 3)
+}
+Invoke-RestMethod -Method Post -Uri 'http://localhost:5285/api/apartments' -ContentType 'application/json' -Body ($apartment | ConvertTo-Json)
+```
+
+En Compose utilizar el puerto publicado 5000. El ejemplo rellena el nombre para cumplir la regla actual; el endpoint no rellena ni recorta nombres silenciosamente. No hace falta otra migracion: se usan las tablas y columnas ya mapeadas por EF. Las restricciones de autorizacion siguen siendo las del proyecto actual, que todavia no implementa autenticacion.
 
 ## Controllers/Bookings/BookingsController.cs
 
@@ -173,7 +203,7 @@ Visual Studio puede reemplazar el entrypoint por un ayudante de depuracion y mon
 - La base debe estar lista al arrancar; Compose ahora espera el healthcheck TCP de PostgreSQL mediante `depends_on: condition: service_healthy`. Una caida posterior sigue requiriendo tratamiento de errores y recuperacion.
 - HTTPS requiere configurar y confiar en el certificado local; montar la carpeta no resuelve automaticamente ambas cosas.
 - La migracion genera tablas con mayusculas y Dapper consulta nombres sin comillas en minusculas. El parametro y las columnas de recargo de GetBooking tambien requieren alineacion.
-- No hay middleware propio para excepciones de validacion o errores tecnicos, ni autenticacion o autorizacion.
-- No existen endpoints de confirmacion, cancelacion, altas de usuarios/apartamentos ni resenas, ni datos iniciales para probar esos flujos.
+- El middleware propio devuelve 400 para `ValidationException` y 500 para otras excepciones. No hay autenticacion o autorizacion.
+- Existe alta de apartamentos mediante `POST /api/apartments`. No existen endpoints de confirmacion, cancelacion, altas de usuarios ni resenas.
 
 Al agregar un endpoint, definir el contrato HTTP, enviar el mensaje apropiado por `ISender`, comprobar los resultados y concretar el tratamiento de excepciones. Mantener las reglas y el guardado en las capas que ya los poseen.
