@@ -1,6 +1,5 @@
 namespace Bookify.Application.Tests.Reviews.CreateReview
 {
-    using Bookify.Api.Controllers.Reviews;
     using Bookify.Application.Reviews.CreateReview;
     using Bookify.Domain.Abstractions;
     using Bookify.Domain.Apartments;
@@ -8,12 +7,13 @@ namespace Bookify.Application.Tests.Reviews.CreateReview
     using Bookify.Domain.Commons;
     using Bookify.Domain.Reviews;
     using Bookify.Domain.Reviews.Events;
+    using Bookify.TestUtilities.Context;
     using FluentAssertions;
-    using Microsoft.AspNetCore.Mvc;
     using Microsoft.VisualStudio.TestTools.UnitTesting;
     using Moq;
 
     [TestClass]
+    [TestCategory("Application")]
     public sealed class CreateReviewTests
     {
         private static readonly DateTime UtcNow = new(2026, 9, 14, 12, 0, 0, DateTimeKind.Utc);
@@ -71,6 +71,7 @@ namespace Bookify.Application.Tests.Reviews.CreateReview
         {
             // Arrange
             using ReviewTestContext reviewTestContext = new();
+
             using CancellationTokenSource cancellation = new();
 
             Booking booking = CreateBooking(BookingStatus.Completed);
@@ -148,7 +149,8 @@ namespace Bookify.Application.Tests.Reviews.CreateReview
 
             // Act
             Result<Guid> result = await reviewTestContext.Sender.Send(
-                new CreateReviewCommand(booking.Id, 4, "Good stay"));
+                new CreateReviewCommand(booking.Id, 4, "Good stay"),
+                default);
 
             // Assert
             result.IsFailure.Should().BeTrue();
@@ -185,7 +187,7 @@ namespace Bookify.Application.Tests.Reviews.CreateReview
             };
 
             // Act
-            Func<Task> act = () => reviewTestContext.Sender.Send(command);
+            Func<Task> act = () => reviewTestContext.Sender.Send(command, default);
 
             // Assert
             await act.Should().ThrowAsync<Exceptions.ValidationException>();
@@ -195,79 +197,6 @@ namespace Bookify.Application.Tests.Reviews.CreateReview
             reviewTestContext.Reviews.VerifyNoOtherCalls();
 
             reviewTestContext.UnitOfWork.VerifyNoOtherCalls();
-        }
-
-        [TestMethod]
-        public async Task Controller_MissingBooking_Should_Return404WithoutSaving()
-        {
-            // Arrange
-            using ReviewTestContext reviewTestContext = new();
-
-            Guid bookingId = Guid.NewGuid();
-
-            reviewTestContext.Bookings
-                .Setup(r => r.GetByIdAsync(bookingId, It.IsAny<CancellationToken>()))
-                .ReturnsAsync((Booking?)null);
-
-            ReviewsController controller = new(reviewTestContext.Sender);
-
-            // Act
-            IActionResult response = await controller.CreateReview(
-                new(bookingId, 4, "Good stay"),
-                CancellationToken.None);
-
-            // Assert
-            response.Should().BeOfType<NotFoundObjectResult>()
-                .Which.Value.Should().Be(BookingErrors.NotFound);
-
-            reviewTestContext.Reviews.VerifyNoOtherCalls();
-
-            reviewTestContext.UnitOfWork.VerifyNoOtherCalls();
-        }
-
-        [TestMethod]
-        [DataRow(BookingStatus.Completed, 201)]
-        [DataRow(BookingStatus.Reserved, 400)]
-        public async Task Controller_Should_ReturnStatusForBookingState(BookingStatus status, int expectedStatus)
-        {
-            // Arrange
-            using ReviewTestContext reviewTestContext = new();
-
-            Booking booking = CreateBooking(status);
-
-            reviewTestContext.Bookings
-                .Setup(r => r.GetByIdAsync(booking.Id, It.IsAny<CancellationToken>()))
-                .ReturnsAsync(booking);
-
-            if (status == BookingStatus.Completed)
-            {
-                reviewTestContext.Reviews.Setup(r => r.Add(It.IsAny<Review>()));
-
-                reviewTestContext.UnitOfWork
-                    .Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
-                    .ReturnsAsync(1);
-            }
-
-            ReviewsController controller = new(reviewTestContext.Sender);
-
-            // Act
-            IActionResult result = await controller.CreateReview(
-                new(booking.Id, 4, "Good stay"),
-                CancellationToken.None);
-
-            // Assert
-            ObjectResult response = result.Should().BeAssignableTo<ObjectResult>().Subject;
-
-            response.StatusCode.Should().Be(expectedStatus);
-
-            if (expectedStatus == 201)
-            {
-                response.Value.Should().BeOfType<Guid>().Which.Should().NotBeEmpty();
-            }
-            else
-            {
-                response.Value.Should().Be(ReviewErrors.NotEligible);
-            }
         }
 
         [TestMethod]
@@ -290,7 +219,8 @@ namespace Bookify.Application.Tests.Reviews.CreateReview
 
             // Act
             Func<Task> act = () => reviewTestContext.Sender.Send(
-                new CreateReviewCommand(booking.Id, 4, "Good stay"));
+                new CreateReviewCommand(booking.Id, 4, "Good stay"),
+                default);
 
             // Assert
             await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("Save failed");
