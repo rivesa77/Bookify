@@ -1,11 +1,8 @@
 ﻿namespace Bookify.Domain.Apartments
 {
-    using System;
+    using Bookify.Domain.Abstractions;
 
-    public interface IApartmentRepository
+    public interface IApartmentRepository : IRepository<Apartment>
     {
-        Task<Apartment?> GetByIdAsync(Guid Id, CancellationToken cancellationToken = default);
-
-        void Add(Apartment apartment);
     }
 }
