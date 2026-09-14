@@ -26,6 +26,7 @@ namespace Bookify.Application.Apartments.CreateApartment
             }
 
             Currency currency = Currency.FromCode(request.Currency);
+
             Apartment apartment = new(
                 Guid.NewGuid(),
                 name.Value,
