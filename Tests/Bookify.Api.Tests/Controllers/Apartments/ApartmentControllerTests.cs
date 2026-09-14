@@ -2,10 +2,13 @@
 {
     using System;
     using Bookify.Api.Controllers.Apartment;
-    using Bookify.Application.Apartments.CreateApartment;
+    using Bookify.Application.Apartments.SearchApartments;
+    using Bookify.Domain.Abstractions;
     using Bookify.Domain.Apartments;
+    using Bookify.TestUtilities.Constants;
     using Bookify.TestUtilities.Context;
     using FluentAssertions;
+    using MediatR;
     using Microsoft.AspNetCore.Mvc;
     using Moq;
 
@@ -13,26 +16,14 @@
     [TestCategory("Controller")]
     public class ApartmentControllerTests
     {
-        private static CreateApartmentCommand ValidCommand() => new(
-            new string('A', Name.ExactLength),
-            "Apartment description",
-            "Spain",
-            "Madrid",
-            "28001",
-            "Madrid",
-            "Street 1",
-            100m,
-            25m,
-            "EUR",
-            [Amenity.Wifi, Amenity.Parking]);
-
         [TestMethod]
         public async Task Controller_Should_Return201WithPersistedId()
         {
             // Arrange
             using ApartmentTestContext apartmentTestContext = new();
 
-            apartmentTestContext.Apartments.Setup(r => r.Add(It.IsAny<Apartment>()));
+            apartmentTestContext.Apartments
+                .Setup(r => r.Add(It.IsAny<Apartment>()));
 
             apartmentTestContext.UnitOfWork
                 .Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
@@ -40,20 +31,18 @@
 
             ApartmentsController controller = new(apartmentTestContext.Sender);
 
-            CreateApartmentCommand command = ValidCommand();
-
             CreateApartmentRequest request = new(
-                command.Name,
-                command.Description,
-                command.Country,
-                command.State,
-                command.ZipCode,
-                command.City,
-                command.Street,
-                command.PriceAmount,
-                command.CleaningFeeAmount,
-                command.Currency,
-                command.Amenities);
+                ApartmentConstants.Name,
+                ApartmentConstants.Description,
+                ApartmentConstants.Country,
+                ApartmentConstants.State,
+                ApartmentConstants.ZipCode,
+                ApartmentConstants.City,
+                ApartmentConstants.Street,
+                ApartmentConstants.PriceAmount,
+                ApartmentConstants.CleaningFeeAmount,
+                ApartmentConstants.Currency,
+                [Amenity.Wifi, Amenity.Parking]);
 
             // Act
             IActionResult result = await controller.CreateApartment(request, CancellationToken.None);
@@ -74,6 +63,75 @@
                 .Which
                 .Should()
                 .NotBeEmpty();
+        }
+
+        [TestMethod]
+        public async Task Controller_Should_Return200WithSearchApartments()
+        {
+            // Arrange
+            Mock<ISender> sender = new(MockBehavior.Strict);
+
+            using CancellationTokenSource cancellation = new();
+
+            IReadOnlyList<ApartmentResponse> apartments =
+            [
+                new ApartmentResponse
+                {
+                    Id = Guid.NewGuid(),
+                    Name = ApartmentConstants.Name,
+                    Description = ApartmentConstants.Description,
+                    Price = ApartmentConstants.PriceAmount,
+                    Currency = ApartmentConstants.Currency,
+                    Address = new AddressResponse
+                    {
+                        Country = ApartmentConstants.Country,
+                        State = ApartmentConstants.State,
+                        ZipCode = ApartmentConstants.ZipCode,
+                        City = ApartmentConstants.City,
+                        Street = ApartmentConstants.Street
+                    }
+                }
+            ];
+
+            DateOnly startDate = new(2026, 1, 1);
+            DateOnly endDate = new(2026, 1, 10);
+
+            SearchApartmentsQuery searchApartmentsQuery = new(startDate, endDate);
+
+            sender
+                .Setup(s => s.Send(
+                    searchApartmentsQuery,
+                    cancellation.Token))
+                .ReturnsAsync(Result.Success(apartments))
+                .Verifiable(Times.Once);
+
+            ApartmentsController controller = new(sender.Object);
+
+            // Act
+            IActionResult result = await controller.SearchApartments(
+                startDate,
+                endDate,
+                cancellation.Token);
+
+            // Assert
+            OkObjectResult response = result
+                .Should()
+                .BeOfType<OkObjectResult>()
+                .Subject;
+
+            response.StatusCode
+                .Should()
+                .Be(200);
+
+            response.Value
+                .Should()
+                .BeAssignableTo<IReadOnlyList<ApartmentResponse>>()
+                .Which
+                .Should()
+                .BeEquivalentTo(apartments);
+
+            sender.VerifyAll();
+            sender.VerifyNoOtherCalls();
         }
     }
 }
