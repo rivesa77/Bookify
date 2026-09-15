@@ -87,7 +87,30 @@ dotnet build Bookify.Api/Bookify.Api.csproj
 
 Este proyecto construye tambien las tres capas referenciadas. La solucion completa incluye las herramientas Docker de Visual Studio.
 
-Para ejecutar la API en Windows con PostgreSQL publicado por Docker:
+Para ejecutar la API sin Docker, instala y arranca PostgreSQL en la maquina local. Los perfiles `http` y `https` usan Development y cargan `appsettings.Development.json`, con `Host=localhost`, puerto 5432, base `bookify` y usuario/clave de ejemplo `postgres`/`postgres`.
+
+```powershell
+dotnet run --project Bookify.Api/Bookify.Api.csproj --launch-profile http
+```
+
+Para otro servidor, puerto o credenciales, configura secretos de desarrollo (sustituye los valores por los reales):
+
+```powershell
+dotnet user-secrets set "ConnectionStrings:Database" "Host=localhost;Port=5432;Database=bookify;Username=mi_usuario;Password=mi_clave" --project Bookify.Api/Bookify.Api.csproj
+```
+
+Estos secretos no se guardan en el repositorio y prevalecen sobre el JSON en Development. Para un servidor remoto, cambia `Host` por su nombre o IP y configura PostgreSQL y el firewall para aceptar la conexion. No guardes credenciales reales en los archivos versionados.
+
+Para ejecutar directamente una API publicada, desde la carpeta de publicacion, sin depender de los perfiles de Visual Studio:
+
+```powershell
+$env:ConnectionStrings__Database = "Host=localhost;Port=5432;Database=bookify;Username=mi_usuario;Password=mi_clave"
+dotnet Bookify.Api.dll
+```
+
+La variable de entorno prevalece sobre el JSON y los secretos. Si no se especifica un entorno, el arranque directo usa Production: no ejecuta las migraciones ni el sembrado automatico; prepara la base previamente. `launchSettings.json` solo interviene al usar un perfil de lanzamiento, no al ejecutar la DLL.
+
+Alternativamente, para ejecutar la API en Windows con PostgreSQL publicado por Docker:
 
 ```powershell
 docker compose up -d bookify-db
@@ -95,7 +118,7 @@ $env:ConnectionStrings__Database = "Host=localhost;Port=5432;Database=bookify;Us
 dotnet run --project Bookify.Api/Bookify.Api.csproj --launch-profile http
 ```
 
-Swagger se abre en [http://localhost:5285/swagger/index.html](http://localhost:5285/swagger/index.html). La variable afecta a los procesos de esa sesion PowerShell. En Windows se usa `localhost`; `bookify-db` es el nombre DNS dentro de la red Compose.
+Con el perfil `http`, Swagger se abre en [http://localhost:5285/swagger/index.html](http://localhost:5285/swagger/index.html). La variable afecta a los procesos de esa sesion PowerShell. En Windows se usa `localhost`; `bookify-db` es el nombre DNS dentro de la red Compose. `docker-compose.yml` establece explicitamente la cadena del contenedor API mediante `ConnectionStrings__Database`. No arranques el contenedor PostgreSQL con el puerto 5432 publicado si tu instalacion local ya ocupa ese puerto.
 
 El arranque ejecuta `Database.Migrate()` en Development antes de atender solicitudes. PostgreSQL debe estar disponible; un error de migracion impide terminar el arranque. La guia de Infrastructure explica como generar y aplicar migraciones manualmente.
 

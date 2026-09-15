@@ -184,7 +184,7 @@ Record publico sellado con `Guid ApartmentId`, `Guid UserId`, `DateOnly StartDat
 
 ## Configuracion y perfiles
 
-`appsettings.json` configura logging general en Information, ASP.NET Core en Warning y `AllowedHosts` como `*`. No incluye cadena de conexion. `appsettings.Development.json` agrega `ConnectionStrings:Database` con host `bookify-db`, puerto 5432, base `bookify` y credenciales locales `postgres`/`postgres`.
+`appsettings.json` configura logging general en Information, ASP.NET Core en Warning y `AllowedHosts` como `*`. No incluye cadena de conexion. `appsettings.Development.json` agrega `ConnectionStrings:Database` con host `localhost`, puerto 5432, base `bookify` y credenciales de ejemplo `postgres`/`postgres`. Esto permite ejecutar los perfiles `http` y `https` contra PostgreSQL instalado en Windows, sin Docker. Las credenciales reales se configuran con secretos de desarrollo o variables de entorno. `docker-compose.yml` sobrescribe la cadena del contenedor API con `Host=bookify-db` mediante `ConnectionStrings__Database`, que prevalece sobre el JSON y los secretos de desarrollo.
 
 Infrastructure solicita `GetConnectionString("DataBase")`; la configuracion de .NET resuelve las claves sin distinguir mayusculas, por lo que `Database` y `DataBase` coinciden. Una variable `ConnectionStrings__Database` permite sobrescribirla. En otros entornos hay que proporcionar la cadena, pues el archivo Development no se carga.
 
