@@ -2,6 +2,8 @@ services:
   bookify.api:
     image: ${DOCKER_REGISTRY-}bookifyapi
     container_name: Bookify.Api
+    environment:
+      - ConnectionStrings__Database=Host=bookify-db;Port=5432;Database=bookify;Username=postgres;Password=postgres;
     build:
       context: .
       dockerfile: Bookify.Api/Dockerfile
