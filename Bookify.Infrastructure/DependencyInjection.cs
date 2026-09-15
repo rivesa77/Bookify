@@ -1,4 +1,4 @@
-﻿namespace Bookify.Infrastructure
+namespace Bookify.Infrastructure
 {
     using Bookify.Application.Abstractions.Data;
     using Bookify.Application.Abstractions.DateTimeProvider;

@@ -1,4 +1,4 @@
-﻿namespace Bookify.Domain.Reviews
+namespace Bookify.Domain.Reviews
 {
     using Bookify.Domain.Abstractions;
     using Bookify.Domain.Bookings;

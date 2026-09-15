@@ -1,4 +1,4 @@
-namespace Bookify.Api.Controllers.Apartment
+namespace Bookify.Api.Controllers.Apartments
 {
     using Bookify.Domain.Apartments;
 

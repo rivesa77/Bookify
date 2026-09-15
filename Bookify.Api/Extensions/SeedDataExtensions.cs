@@ -1,4 +1,4 @@
-﻿namespace Bookify.Api.Extensions
+namespace Bookify.Api.Extensions
 {
     using System.Data;
     using Bogus;

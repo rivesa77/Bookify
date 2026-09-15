@@ -1,4 +1,4 @@
-﻿namespace Bookify.Domain.Users
+namespace Bookify.Domain.Users
 {
     using System;
     using Bookify.Domain.Abstractions;

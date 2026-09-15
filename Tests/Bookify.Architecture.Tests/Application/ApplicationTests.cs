@@ -1,4 +1,4 @@
-﻿namespace Bookify.ArchitectureTest.Application
+namespace Bookify.Architecture.Tests.Application
 {
     using Bookify.Application.Abstractions.Messaging;
     using FluentAssertions;

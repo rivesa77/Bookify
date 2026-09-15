@@ -1,4 +1,4 @@
-﻿namespace Bookify.ArchitectureTest
+namespace Bookify.Architecture.Tests
 {
     using System.Reflection;
     using Bookify.Application.Abstractions.Messaging;

@@ -1,7 +1,7 @@
-﻿namespace Bookify.Api.Tests.Controllers.Apartment
+namespace Bookify.Api.Tests.Controllers.Apartments
 {
     using System;
-    using Bookify.Api.Controllers.Apartment;
+    using Bookify.Api.Controllers.Apartments;
     using Bookify.Application.Apartments.SearchApartments;
     using Bookify.Domain.Abstractions;
     using Bookify.Domain.Apartments;

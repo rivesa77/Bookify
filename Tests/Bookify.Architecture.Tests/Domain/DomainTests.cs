@@ -1,4 +1,4 @@
-﻿namespace Bookify.ArchitectureTest.Domain
+namespace Bookify.Architecture.Tests.Domain
 {
     using Bookify.Domain.Abstractions;
     using FluentAssertions;
