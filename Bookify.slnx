@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/Postman/">
+    <File Path="Postman/Bookify_initial.postman_collection.json" />
+  </Folder>
   <Folder Name="/Scr/">
     <Project Path="Bookify.Api/Bookify.Api.csproj" Id="b10dfa85-6c4d-46eb-8bb9-0a4d304e932a" />
     <Project Path="Bookify.Application/Bookify.Application.csproj" Id="75e27d62-fb7c-44b4-8238-c13cf328c7d1" />
@@ -7,9 +10,9 @@
   </Folder>
   <Folder Name="/Tests/">
     <Project Path="Tests/Bookify.Api.Tests/Bookify.Api.Tests.csproj" Id="b1ee0093-42a6-4fed-9c85-2eeb466a50b0" />
+    <Project Path="Tests/Bookify.Application.Tests/Bookify.Application.Tests.csproj" />
     <Project Path="Tests/Bookify.Architecture.Tests/Bookify.Architecture.Tests.csproj" Id="7e7038db-4c08-4c6c-8998-a2ca95f7e6da" />
     <Project Path="Tests/Bookify.TestUtilities/Bookify.TestUtilities.csproj" Id="32a106bf-d34e-46b1-9b6b-f687ec4b54f1" />
-    <Project Path="Tests/Bookify.Application.Tests/Bookify.Application.Tests.csproj" />
   </Folder>
   <Project Path="docker-compose.dcproj">
     <Build />

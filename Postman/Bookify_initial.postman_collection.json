@@ -1,0 +1,156 @@
+{
+  "info": {
+    "_postman_id": "d20933d4-eac4-4176-afe4-525f04b682b3",
+    "name": "Bookify",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "23378263"
+  },
+  "item": [
+    {
+      "name": "Apartment",
+      "item": [
+        {
+          "name": "SEARCH SECURE",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://localhost:5001/api/apartments?startDate=07-22-2023&endDate=07-23-2023",
+              "protocol": "https",
+              "host": [
+                "localhost"
+              ],
+              "port": "5001",
+              "path": [
+                "api",
+                "apartments"
+              ],
+              "query": [
+                {
+                  "key": "startDate",
+                  "value": "07-22-2023",
+                  "type": "text"
+                },
+                {
+                  "key": "endDate",
+                  "value": "07-23-2023",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "SEARCH",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:5000/api/apartments?startDate=07-22-2023&endDate=07-23-2023",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "apartments"
+              ],
+              "query": [
+                {
+                  "key": "startDate",
+                  "value": "07-22-2023"
+                },
+                {
+                  "key": "endDate",
+                  "value": "07-23-2023"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "CREATE",
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          },
+          "request": {
+            "method": "GET",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"name\": \"Nombre\",\r\n  \"description\": \"Descripcion\",\r\n  \"country\": \"España\",\r\n  \"state\": \"Andalucia\",\r\n  \"zipCode\": \"04007\",\r\n  \"city\": \"Almeria\",\r\n  \"street\": \"Calle Galicia 6\",\r\n  \"priceAmount\": 100.5,\r\n  \"cleaningFeeAmount\": 75,\r\n  \"currency\": \"EUR\",\r\n  \"amenities\": [\r\n    1,2\r\n  ]\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "https://localhost:5001/api/apartments",
+              "protocol": "https",
+              "host": [
+                "localhost"
+              ],
+              "port": "5001",
+              "path": [
+                "api",
+                "apartments"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "BOOKING",
+      "item": [
+        {
+          "name": "GET BOOKING SECURE",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://localhost:5001/api/bookings/e24c7948-24eb-4d22-9ae3-466cc697ff0e",
+              "protocol": "https",
+              "host": [
+                "localhost"
+              ],
+              "port": "5001",
+              "path": [
+                "api",
+                "bookings",
+                "e24c7948-24eb-4d22-9ae3-466cc697ff0e"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET BOOKING",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:5000/api/bookings/e24c7948-24eb-4d22-9ae3-466cc697ff0e",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "bookings",
+                "e24c7948-24eb-4d22-9ae3-466cc697ff0e"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
