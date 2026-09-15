@@ -28,6 +28,87 @@ services:
       start_period: 10s
     ports:
       - 5432:5432
+  
+    # DESARROLLO: la configuracion activa de abajo no es de produccion.
+    # PRODUCCION: ejemplo independiente, una instancia y HTTPS directo.
+    # Crear un Compose separado con este bloque SIN comentarios. No mezclar
+    # con docker-compose.override.yml, ni con environment/ports/volumes locales.
+    # Requiere DNS, puerto 443 libre, certificado valido y PostgreSQL preparado.
+    # Detalles, variables y verificaciones en Bookify.Api/readme.md.
+    # services:
+    #   bookify-idp:
+    #     image: quay.io/keycloak/keycloak:${KEYCLOAK_VERSION:?Define una version fija}
+    #     command: ["start", "--import-realm"]
+    #     restart: unless-stopped
+    #     environment:
+    #       KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:?URL https del dominio publico}
+    #       KC_HTTP_ENABLED: "false"
+    #       KC_DB: postgres
+    #       KC_DB_URL: ${KEYCLOAK_DB_URL:?URL JDBC PostgreSQL con TLS}
+    #       KC_DB_USERNAME: ${KEYCLOAK_DB_USERNAME:?Usuario propio de Keycloak}
+    #       KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?Clave de la BD}
+    #       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:?Administrador inicial}
+    #       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?Clave inicial segura}
+    #       KC_HTTPS_CERTIFICATE_FILE: /opt/keycloak/conf/tls/fullchain.pem
+    #       KC_HTTPS_CERTIFICATE_KEY_FILE: /opt/keycloak/conf/tls/privkey.pem
+    #     ports:
+    #       - "443:8443"
+    #     volumes:
+    #       - type: bind
+    #         source: ${KEYCLOAK_TLS_DIR:?Directorio absoluto con certificados PEM}
+    #         target: /opt/keycloak/conf/tls
+    #         read_only: true
+    #         bind:
+    #           create_host_path: false
+    #       - type: bind
+    #         source: ${KEYCLOAK_DB_CA_FILE:?Ruta absoluta al certificado CA de PostgreSQL}
+    #         target: /opt/keycloak/conf/db-ca.pem
+    #         read_only: true
+    #         bind:
+    #           create_host_path: false
+    #       - type: bind
+    #         source: ${KEYCLOAK_REALM_FILE:?Ruta absoluta al JSON exportado}
+    #         target: /opt/keycloak/data/import/bookify-realm.json
+    #         read_only: true
+    #         bind:
+    #           create_host_path: false
+    #
+    # KEYCLOAK_PUBLIC_URL: https://auth.midominio.com
+    # KEYCLOAK_DB_URL: jdbc:postgresql://db.midominio.com:5432/keycloak?sslmode=verify-full&sslrootcert=/opt/keycloak/conf/db-ca.pem
+    # Crear antes la base keycloak y su usuario propietario, sin superusuario.
+    # El host de PostgreSQL debe ser resoluble desde el contenedor; localhost
+    # dentro del contenedor NO es la maquina anfitriona.
+    # Inyectar variables con el despliegue; nunca versionar claves, PEM privados
+    # ni exports con secretos. Variables de entorno no son almacenamiento cifrado.
+    # JSON real con realm=bookify; no carpeta. Si ya existe, se omite la importacion.
+    # Sin importacion: usar ["start"] y quitar el montaje KEYCLOAK_REALM_FILE.
+    # Los datos se guardan en PostgreSQL; no reutilizar el volumen H2 de desarrollo.
+    # --optimized requiere imagen preparada previamente con kc.sh build --db=postgres.
+    # Antes de publicar: copias/restauracion de BD, renovacion TLS, monitorizacion,
+    # acceso administrativo restringido, MFA y sustitucion del admin temporal.
+    # Esto no despliega PostgreSQL ni configura clientes/roles o autenticacion API.
+    # Guias: https://www.keycloak.org/server/containers
+    # https://www.keycloak.org/server/enabletls
+    # https://www.keycloak.org/server/importExport
+
+  bookify-idp:
+    image: keycloak/keycloak:latest
+    container_name: Bookify.Identity
+    command: ["start-dev", "--import-realm"]
+    environment:
+      - KC_BOOTSTRAP_ADMIN_USERNAME=admin
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-admin}
+    volumes:
+      - ./.containers/identity:/opt/keycloak/data
+      # El origen debe ser un archivo JSON y el destino no debe ser una carpeta.
+      - type: bind
+        source: ./.files/bookify-realm-export.json
+        target: /opt/keycloak/data/import/bookify-realm.json
+        read_only: true
+        bind:
+          create_host_path: false
+    ports:
+      - "127.0.0.1:18080:8080"
 
 volumes:
   bookify-db-data:

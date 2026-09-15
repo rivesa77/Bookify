@@ -211,6 +211,118 @@ Separar las etapas evita necesitar el SDK para ejecutar la imagen final. Copiar 
 
 Visual Studio puede reemplazar el entrypoint por un ayudante de depuracion y montar los binarios, mientras que Compose independiente usa el DLL publicado. Un contenedor activo con el ayudante no garantiza una API activa. Ademas, Release es una configuracion de compilacion y Development es un entorno de ejecucion: el override actual mantiene Development incluso al construir la etapa final.
 
+## Keycloak: desarrollo y produccion
+
+El servicio `bookify-idp` de `docker-compose.yml` ejecuta Keycloak con `command: ["start-dev"]`. Es una configuracion de desarrollo, no de produccion. La consola local esta en [http://localhost:18080/admin/](http://localhost:18080/admin/) y el puerto se publica solo en `127.0.0.1`.
+
+Las variables `KC_BOOTSTRAP_ADMIN_USERNAME` y `KC_BOOTSTRAP_ADMIN_PASSWORD` crean el administrador inicial. Actualmente el usuario es `admin` y la clave se obtiene de `KEYCLOAK_ADMIN_PASSWORD`, con `admin` como valor de ejemplo si no se define. No son un mecanismo para cambiar la clave de un administrador existente. Los datos locales se conservan en `./.containers/identity`. La importacion de realms requiere un JSON real en `/opt/keycloak/data/import` y el argumento `--import-realm`.
+
+Para produccion se utiliza `command: ["start"]`, pero tambien hay que fijar una version concreta de la imagen en lugar de `latest`, configurar una base PostgreSQL y un usuario propios para Keycloak, proporcionar secretos seguros, definir el dominio publico y habilitar HTTPS.
+
+Ejemplo de las opciones de produccion cuando un proxy inverso termina HTTPS (sustituye valores y adapta la red; no es un Compose completo):
+
+```yaml
+command: ["start"]
+environment:
+  KC_HOSTNAME: https://auth.midominio.com
+  KC_HTTP_ENABLED: "true"
+  KC_PROXY_HEADERS: xforwarded
+  KC_DB: postgres
+  KC_DB_URL: jdbc:postgresql://servidor-postgres:5432/keycloak
+  KC_DB_USERNAME: keycloak
+  KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?Define la clave}
+  KC_BOOTSTRAP_ADMIN_USERNAME: admin
+  KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?Define la clave}
+```
+
+La conexion externa debe ser HTTPS. El puerto HTTP interno debe ser accesible solo desde el proxy, que debe sobrescribir las cabeceras reenviadas. `KC_PROXY_HEADERS` debe corresponder al tipo de cabeceras que realmente configura el proxy. Sin terminacion TLS en un proxy, configura HTTPS y certificados directamente en Keycloak; no expongas HTTP sin proteccion. Las variables del ejemplo deben proporcionarse mediante la configuracion segura del despliegue, sin guardar credenciales reales en el repositorio.
+
+`command: ["start", "--optimized"]` es otra opcion, pero requiere una imagen preparada previamente con `/opt/keycloak/bin/kc.sh build` y las opciones de construccion correspondientes, como el proveedor de base de datos. No se debe agregar `--optimized` sin ese paso previo. Consulta la [guia oficial de contenedores de Keycloak](https://www.keycloak.org/server/containers).
+
+Estas indicaciones no convierten el Compose actual en un despliegue de produccion: la configuracion activa se mantiene en desarrollo. Arrancar Keycloak tampoco configura automaticamente la autenticacion de la API.
+
+### Ejemplo completo: HTTPS directo e importacion inicial
+
+El comentario de `docker-compose.yml` incluye el siguiente ejemplo de **un servicio Keycloak de una sola instancia** con PostgreSQL externo ya preparado. No es un despliegue completo de Bookify ni una configuracion de alta disponibilidad. Crear un archivo independiente `keycloak.production.yml` con este contenido; no combinarlo con el Compose de desarrollo, cuyos puertos, credenciales y volumen H2 no deben heredarse.
+
+```yaml
+services:
+  bookify-idp:
+    image: quay.io/keycloak/keycloak:${KEYCLOAK_VERSION:?Define una version fija}
+    command: ["start", "--import-realm"]
+    restart: unless-stopped
+    environment:
+      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:?URL https del dominio publico}
+      KC_HTTP_ENABLED: "false"
+      KC_DB: postgres
+      KC_DB_URL: ${KEYCLOAK_DB_URL:?URL JDBC PostgreSQL con TLS}
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USERNAME:?Usuario propio de Keycloak}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?Clave de la BD}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:?Administrador inicial}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?Clave inicial segura}
+      KC_HTTPS_CERTIFICATE_FILE: /opt/keycloak/conf/tls/fullchain.pem
+      KC_HTTPS_CERTIFICATE_KEY_FILE: /opt/keycloak/conf/tls/privkey.pem
+    ports:
+      - "443:8443"
+    volumes:
+      - type: bind
+        source: ${KEYCLOAK_TLS_DIR:?Directorio absoluto con certificados PEM}
+        target: /opt/keycloak/conf/tls
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${KEYCLOAK_DB_CA_FILE:?Ruta absoluta al certificado CA de PostgreSQL}
+        target: /opt/keycloak/conf/db-ca.pem
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${KEYCLOAK_REALM_FILE:?Ruta absoluta al JSON exportado}
+        target: /opt/keycloak/data/import/bookify-realm.json
+        read_only: true
+        bind:
+          create_host_path: false
+```
+
+Preparativos obligatorios:
+
+1. Fijar `KEYCLOAK_VERSION` a una version soportada y probada (no `latest`), y comprobar su compatibilidad con PostgreSQL antes de actualizar.
+2. Configurar DNS para el servidor y `KEYCLOAK_PUBLIC_URL=https://auth.midominio.com`. Abrir 443 y comprobar que no lo ocupa otro servicio.
+3. Preparar `KEYCLOAK_TLS_DIR` con `fullchain.pem` y `privkey.pem` coincidentes, emitidos para ese dominio. Deben ser legibles por el usuario del contenedor, sin dar permisos globales a la clave privada. Organizar su renovacion.
+4. Crear previamente una base `keycloak` y un usuario propio, propietario de esa base y con permisos para crear y actualizar sus tablas, pero sin privilegios de superusuario. No usar las tablas de Bookify ni la base H2 de desarrollo. Preparar copias de seguridad y probar la restauracion.
+5. Habilitar TLS en PostgreSQL y permitir en el firewall y `pg_hba.conf` solo el acceso necesario. Definir `KEYCLOAK_DB_CA_FILE` como archivo PEM de la CA que firma el certificado del servidor. Ejemplo de `KEYCLOAK_DB_URL`: `jdbc:postgresql://db.midominio.com:5432/keycloak?sslmode=verify-full&sslrootcert=/opt/keycloak/conf/db-ca.pem`. El nombre debe coincidir con el certificado y resolverse desde el contenedor. Su `localhost` no es la maquina anfitriona.
+6. Inyectar usuario/clave de BD y administrador inicial mediante el despliegue. No versionar secretos, claves privadas ni exports que contengan credenciales. La interpolacion de variables no cifra secretos: restringir tambien acceso a Docker y al entorno del proceso. No publicar la salida completa de `docker compose config`.
+7. Definir `KEYCLOAK_REALM_FILE` con la ruta absoluta a un JSON exportado real cuyo campo `realm` sea `bookify`. El montaje usa `bookify-realm.json` dentro del contenedor. `create_host_path: false` evita crear una carpeta cuando falta el archivo; comprobar ademas que el origen no sea ya una carpeta.
+
+Un JSON minimo de arranque es:
+
+```json
+{
+  "realm": "bookify",
+  "enabled": true,
+  "displayName": "Bookify",
+  "registrationAllowed": false
+}
+```
+
+Este JSON solo crea el realm; configurar los clientes, roles, URLs de redireccion y origenes permitidos antes de utilizarlo con aplicaciones. Un export completo puede contener secretos y debe tratarse como material sensible. La importacion de arranque omite un realm existente: no es un mecanismo de actualizacion ni una copia de seguridad de la BD. Para no importar, cambiar el comando a `["start"]` y eliminar el montaje del JSON.
+
+Con las variables ya disponibles en el entorno del despliegue:
+
+```powershell
+docker compose -f keycloak.production.yml config --quiet
+docker compose -f keycloak.production.yml up -d bookify-idp
+docker compose -f keycloak.production.yml logs --tail 100 bookify-idp
+```
+
+Estas instrucciones son una plantilla: ese archivo de produccion no se crea ni se ejecuta como parte de este cambio documental. Verificar HTTPS sin desactivar la validacion de certificados en `https://auth.midominio.com/realms/bookify/.well-known/openid-configuration` y comprobar que `issuer` coincide con el dominio previsto. Tras el bootstrap, crear administradores permanentes, protegerlos con MFA y retirar la cuenta temporal y sus variables de bootstrap. Restringir la consola administrativa mediante controles de red/acceso; `KC_HOSTNAME` no es una regla de firewall.
+
+El ejemplo no publica 8080 ni el puerto de gestion. Preparar monitorizacion, alertas, recursos suficientes y un procedimiento de actualizacion y recuperacion antes de operar en produccion. Para varias replicas se necesita disenar adicionalmente balanceo, descubrimiento/cache y disponibilidad de la BD. La alternativa con proxy descrita arriba sustituye la terminacion TLS directa; no habilitar HTTP publico mezclando ambos ejemplos.
+
+Referencias: [TLS de Keycloak](https://www.keycloak.org/server/enabletls), [PostgreSQL y otras bases](https://www.keycloak.org/server/db), [importacion de realms](https://www.keycloak.org/server/importExport).
+
+
 ## Comprobaciones y limites actuales
 
 `Bookify.Api.http` conserva una variable de host `http://localhost:5285` y un GET a `/weatherforecast/` con `Accept: application/json`. Puede abrirse en el cliente HTTP del IDE, pero esa ruta no existe en los controladores actuales: para probar Bookify hay que usar las rutas de apartamentos y reservas explicadas arriba.
