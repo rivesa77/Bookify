@@ -6,13 +6,14 @@ namespace Bookify.Infrastructure
     using Bookify.Domain.Abstractions;
     using Bookify.Domain.Apartments;
     using Bookify.Domain.Bookings;
-    using Bookify.Domain.Users;
     using Bookify.Domain.Reviews;
+    using Bookify.Domain.Users;
     using Bookify.Infrastructure.Clock;
     using Bookify.Infrastructure.Data;
     using Bookify.Infrastructure.Email;
     using Bookify.Infrastructure.Repositories;
     using Dapper;
+    using Microsoft.AspNetCore.Authentication.JwtBearer;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.DependencyInjection;
@@ -25,6 +26,17 @@ namespace Bookify.Infrastructure
                 .AddTransient<IDateTimeProvider, DateTimeProvider>()
                 .AddTransient<IEmailService, EmailService>();
 
+            AddPersistence(services, configuration);
+
+            services
+                .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+                .AddJwtBearer();
+
+            return services;
+        }
+
+        private static void AddPersistence(IServiceCollection services, IConfiguration configuration)
+        {
             services
                 .AddScoped<IApartmentRepository, ApartmentRepository>()
                 .AddScoped<IBookingRepository, BookingRepository>()
@@ -48,8 +60,6 @@ namespace Bookify.Infrastructure
 
             SqlMapper
                 .AddTypeHandler(new DateOnlyTypeHandler());
-
-            return services;
         }
     }
 }
