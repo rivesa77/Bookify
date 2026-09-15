@@ -6,6 +6,14 @@ La capa Domain no deberia depender de detalles externos como bases de datos, con
 
 [Guia de la solucion](../readme.md) | [Application](../Bookify.Application/readme.md) | [Infrastructure](../Bookify.Infrastructure/readme.md) | [Api](../Bookify.Api/readme.md)
 
+## Identidad de dominio y JWT
+
+Keycloak autentica identidades externas; User modela el usuario del negocio. JWT no introduce dependencias de HttpContext, ASP.NET Core ni Keycloak en Domain.
+
+No existe una vinculacion implementada entre el claim sub y User.Id. No asumir que ambos identificadores son equivalentes ni que validar un token crea un usuario de dominio. UserErrors.InvalidCredentials sigue declarado, sin implementar un caso de uso de login o almacenar contrasenas en User.
+
+Review.Create copia booking.UserId y comprueba elegibilidad, pero no autentica al solicitante ni comprueba su propiedad sobre la reserva. La proteccion HTTP de apartamentos vive en API; no sustituye reglas de acceso a reservas o reviews. Consultar [Application](../Bookify.Application/readme.md#jwt-y-acceso-a-los-casos-de-uso) para los limites de autorizacion actuales.
+
 ## Indice
 
 - [Inventario de archivos](#inventario-de-archivos)

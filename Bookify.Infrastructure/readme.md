@@ -6,6 +6,27 @@ Aqui viven las implementaciones concretas de persistencia, acceso SQL, fecha/hor
 
 [Guia de la solucion](../readme.md) | [Domain](../Bookify.Domain/readme.md) | [Application](../Bookify.Application/readme.md) | [Api](../Bookify.Api/readme.md)
 
+## Authentication: JWT Bearer
+
+Infrastructure configura la validacion tecnica de tokens; Keycloak conserva la responsabilidad de emitirlos.
+
+| Archivo | Funcion |
+| --- | --- |
+| [Authentication/AuthenticationOptions.cs](Authentication/AuthenticationOptions.cs) | Define Audience, MetadataUrl, RequireHttpsMetadata e Issuer. Cadenas vacias y booleano false por defecto; sin validacion de opciones propia. |
+| [Authentication/JwtBearerOptionsSetup.cs](Authentication/JwtBearerOptionsSetup.cs) | IConfigureNamedOptions<JwtBearerOptions> interno. Recibe IOptions<AuthenticationOptions> y asigna Audience, MetadataAddress, RequireHttpsMetadata y TokenValidationParameters.ValidIssuer. |
+| [DependencyInjection.cs](DependencyInjection.cs) | AddInfrastructure registra AddAuthentication con esquema Bearer, AddJwtBearer, Configure<AuthenticationOptions> sobre la seccion Authentication y ConfigureOptions<JwtBearerOptionsSetup>. AddPersistence agrupa la configuracion de persistencia. |
+| [Bookify.Infrastructure.csproj](Bookify.Infrastructure.csproj) | Incorpora Microsoft.AspNetCore.Authentication.JwtBearer 10.0.12 y JWT 11.1.0. El codigo usa el manejador Microsoft; no se observa uso directo del paquete JWT. |
+
+Configure(string? name, JwtBearerOptions options) delega en Configure(options) sin filtrar name. Con el unico esquema actual sirve; con varios esquemas de configuracion distinta habria que limitar su alcance.
+
+El manejador descarga metadatos OpenID Connect y obtiene las claves publicas anunciadas en jwks_uri. Comprueba firma, vigencia, audiencia y emisor conforme a las opciones y metadatos; el proyecto no desactiva expresamente esas validaciones. Decodificar un JWT no equivale a validarlo. La API no necesita la clave privada de Keycloak ni un secreto de cliente para verificar estas firmas asimetricas.
+
+**Configuracion pendiente de alinear:** el JSON de API usa ValidIssuer, pero AuthenticationOptions espera Issuer; no son alias. MetadataUrl apunta a bookify-idp:8080, adecuado para la red Docker pero no para el proceso local de Windows. La [guia JWT de API](../Bookify.Api/readme.md#autenticacion-jwt) explica las alternativas y limites. Se documenta el estado actual sin cambiar opciones ni codigo.
+
+Usar HTTPS confiable y RequireHttpsMetadata=true en produccion. Asegurar acceso desde la API tanto al descubrimiento como a las claves, con el hostname/emisor coherente. Las opciones faltantes no se comprueban mediante ValidateOnStart y pueden fallar al autenticar una peticion.
+
+Infrastructure registra autenticacion; los atributos de API deciden donde exigirla. Application y Domain no reciben dependencias JWT con este cambio.
+
 ## Indice
 
 - [Inventario de archivos](#inventario-de-archivos)

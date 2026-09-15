@@ -8,6 +8,16 @@ Esta guia distingue el comportamiento implementado de las limitaciones pendiente
 
 [Guia de la solucion](../readme.md) | [Domain](../Bookify.Domain/readme.md) | [Infrastructure](../Bookify.Infrastructure/readme.md) | [Api](../Bookify.Api/readme.md)
 
+## JWT y acceso a los casos de uso
+
+JWT se valida en el pipeline HTTP de API mediante Infrastructure. Application no incorpora un behavior MediatR de autorizacion, un servicio de usuario actual ni lectura de claims.
+
+Los casos de uso de apartamentos llegan autenticados por su controlador con [Authorize]. Invocar ISender directamente no ejecuta ese atributo. FluentValidation comprueba datos de entrada, no identidad ni permisos.
+
+ReserveBookingCommand sigue aceptando UserId del llamador: buscarlo en el repositorio solo comprueba que existe, no que corresponda al sub del token. CreateReviewCommandHandler recibe BookingId; la fabrica copia el usuario de la reserva, pero no comprueba que sea quien hace la peticion. Los endpoints de reservas y reviews siguen sin [Authorize]. No hay comprobacion de propiedad ni roles en estos handlers.
+
+Los tests con contextos y mocks comprueban casos de uso y pipeline MediatR, no autenticacion HTTP. Consultar la [guia JWT de API](../Bookify.Api/readme.md#autenticacion-jwt) para ejecutar peticiones protegidas y conocer las limitaciones actuales.
+
 ## Indice
 
 - [Objetivo y decisiones](#objetivo-de-la-capa-application)

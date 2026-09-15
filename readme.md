@@ -1,5 +1,15 @@
 # Bookify
 
+## JWT y Keycloak
+
+La API incorpora JWT Bearer: Infrastructure registra el esquema y API ejecuta UseAuthentication antes de UseAuthorization. GET y POST /api/apartments requieren un access token por [Authorize]. Reservas y reviews siguen sin proteccion por atributos ni politica global. No hay roles, control de propiedad ni vinculacion automatica entre sub y User.Id.
+
+La seccion Authentication requiere Audience, Issuer, MetadataUrl y RequireHttpsMetadata. El JSON actual tiene una discrepancia: usa ValidIssuer en lugar de Issuer. Ademas, MetadataUrl apunta a bookify-idp:8080; la API local necesita una direccion alcanzable, normalmente localhost:18080. Audience=account debe coincidir con aud del token real.
+
+La [guia JWT de API](Bookify.Api/readme.md#autenticacion-jwt) explica configuracion, uso manual y diagnostico. [Infrastructure](Bookify.Infrastructure/readme.md#authentication-jwt-bearer) detalla las clases. Los tests que invocan metodos de controladores no verifican [Authorize]; no se ha validado aqui un flujo JWT de extremo a extremo.
+
+
+
 Bookify es una solucion .NET 10 para reservar apartamentos, organizada en Domain, Application, Infrastructure y Api. El host actual es `Bookify.Api`: registra las capas, expone controladores HTTP y, en Development, publica OpenAPI y Swagger UI y aplica las migraciones de PostgreSQL al arrancar.
 
 ## Guias por capa
@@ -165,6 +175,6 @@ Una imagen final compilada en Release no cambia `ASPNETCORE_ENVIRONMENT`: con el
 - `GetBookingQueryHandler` sigue enviando `Id` cuando SQL solicita `@BookingId`, y consulta `amenities_up_charge_*` cuando la migracion contiene `amenities_up_change_*`.
 - `Address` sigue siendo opcional para EF; sus columnas admiten `NULL`. El constructor vacio no establece obligatoriedad de campos ni navegaciones.
 - El conflicto de EF se traduce a `ConcurrencyException` y despues a `BookingErrors.Overlap`. El token sombra del apartamento usa `xmin` y requiere una actualizacion efectiva del apartamento; no protege todas las entidades ni cualquier insercion por otros medios.
-- Hay pruebas de arquitectura y del alta de apartamentos con repositorios simulados. No hay autenticacion ni autorizacion configuradas. Estas guias no afirman una validacion integral de reservas concurrentes o de las consultas SQL.
+- Hay pruebas de arquitectura y casos de uso con repositorios simulados. JWT protege apartamentos, pero no se ha comprobado aqui el pipeline HTTP de autenticacion. Estas guias no afirman una validacion integral de reservas concurrentes o de las consultas SQL.
 
 Para profundizar, seguir las guias en el orden Domain, Application, Infrastructure y Api. Cada una incluye el inventario de archivos y explica las decisiones y el comportamiento actual de su capa.

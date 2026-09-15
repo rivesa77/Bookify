@@ -4,6 +4,72 @@ Esta es la capa de entrada HTTP y el host ejecutable de Bookify. Recibe solicitu
 
 [Guia de la solucion](../readme.md) | [Domain](../Bookify.Domain/readme.md) | [Application](../Bookify.Application/readme.md) | [Infrastructure](../Bookify.Infrastructure/readme.md)
 
+## Autenticacion JWT
+
+### Flujo y endpoints
+
+Keycloak emite access tokens; Bookify los valida, no implementa login ni emision de tokens. Infrastructure registra el esquema Bearer. En Program.cs se ejecutan, por este orden, UseCustomExceptionHandler, UseAuthentication, UseAuthorization y MapControllers. La autenticacion construye HttpContext.User; la autorizacion decide si puede acceder al endpoint.
+
+| Endpoint | Proteccion actual |
+| --- | --- |
+| GET /api/apartments | [Authorize] en ApartmentsController. |
+| POST /api/apartments | [Authorize] en ApartmentsController. |
+| GET /api/bookings/{id} | Sin [Authorize] ni politica global. |
+| POST /api/bookings | Sin [Authorize] ni politica global. |
+| POST /api/reviews | Sin [Authorize] ni politica global. |
+
+No se exigen roles, scopes ni propiedad de los recursos. En endpoints protegidos, un token ausente o invalido produce normalmente 401. Un 403 corresponde a identidad autenticada que no cumple una politica; no hay politicas propias adicionales actualmente. Validar un JWT no vincula automaticamente su claim sub con User.Id.
+
+### Opciones y configuracion local
+
+Infrastructure lee Authentication mediante AuthenticationOptions y JwtBearerOptionsSetup:
+
+| Clave | Uso |
+| --- | --- |
+| Audience | Audiencia que debe incluir el token en aud; actualmente account. |
+| Issuer | Emisor esperado, asignado a TokenValidationParameters.ValidIssuer. |
+| MetadataUrl | Documento OpenID Connect; anuncia tambien las claves en jwks_uri. |
+| RequireHttpsMetadata | Exige HTTPS al obtener metadatos; false solo para desarrollo HTTP. |
+
+**Discrepancia actual:** appsettings.Development.json contiene ValidIssuer, pero la propiedad se llama Issuer. Esa clave no se enlaza y el emisor explicito queda vacio. El manejador tambien obtiene el emisor del descubrimiento; esto no significa que la validacion de issuer este desactivada. Debe corregirse la clave de configuracion antes de depender de ese valor explicito. La URL actual usa bookify-idp:8080, que se resuelve en Compose, no normalmente desde Windows.
+
+Ejemplo para API local y Keycloak publicado en localhost:18080, proporcionado mediante secretos de usuario o configuracion externa (no es el JSON actual):
+
+```json
+{
+  "Authentication": {
+    "Audience": "account",
+    "Issuer": "http://localhost:18080/realms/bookify",
+    "MetadataUrl": "http://localhost:18080/realms/bookify/.well-known/openid-configuration",
+    "RequireHttpsMetadata": false
+  }
+}
+```
+
+Las variables equivalentes son Authentication__Audience, Authentication__Issuer, Authentication__MetadataUrl y Authentication__RequireHttpsMetadata. Los secretos de desarrollo se configuran en Bookify.Api; las variables de entorno prevalecen sobre ellos. En produccion proporcionar la seccion externamente, con HTTPS confiable y RequireHttpsMetadata=true: Development no se carga.
+
+El emisor debe concordar con iss y con el hostname publico de Keycloak. La API debe alcanzar tanto MetadataUrl como el jwks_uri anunciado, tambien cuando corre en Docker. localhost dentro de un contenedor es ese contenedor. No desactivar firma, audiencia o emisor para resolver problemas de red.
+
+El client_id no implica automaticamente que exista esa audiencia en aud. Comprobar los tokens reales; para produccion configurar una audiencia dedicada a Bookify y su mapper en Keycloak. RequireHttpsMetadata no habilita HTTPS en la API. No hay validacion propia de estas opciones al arrancar.
+
+### Uso manual
+
+Configurar un cliente en Keycloak y un flujo adecuado: Authorization Code con PKCE para usuarios interactivos o Client Credentials para servicios con cuenta de servicio habilitada. La configuracion de Bookify no crea clientes ni habilita flujos. Consultar las URLs de autorizacion/token en el documento OpenID Connect del realm y utilizar el access_token obtenido, no el id_token.
+
+```http
+GET http://localhost:5285/api/apartments?startDate=2026-10-01&endDate=2026-10-05
+Authorization: Bearer <access_token>
+Accept: application/json
+```
+
+En Postman usar Authorization > Bearer Token. Bookify.Api.http ya contiene los endpoints actuales, pero aun no incluye la cabecera Authorization; anadirla para apartamentos. No versionar tokens ni secretos. Program.cs no configura un esquema Bearer ni OAuth en OpenAPI/Swagger: no asumir que [Authorize] habilita por si solo un boton Authorize funcional.
+
+Ante un 401, comprobar vencimiento, firma, aud, iss, realm y conectividad a metadatos/claves, sin publicar tokens completos. Un token valido no demuestra que el usuario sea propietario de una reserva.
+
+### Alcance de las pruebas
+
+Los tests que crean controladores con new y llaman a sus metodos no ejecutan el pipeline HTTP ni [Authorize]. Tampoco ISender ejecuta autorizacion HTTP. Faltan pruebas HTTP de token ausente, invalido, expirado, audiencia/emisor incorrectos y token valido. Esta actualizacion documental no verifica un flujo JWT real contra Keycloak.
+
 ## Inventario de archivos
 
 | Archivo | Responsabilidad |
@@ -20,7 +86,7 @@ Esta es la capa de entrada HTTP y el host ejecutable de Bookify. Recibe solicitu
 | [Properties/launchSettings.json](Properties/launchSettings.json) | Perfiles locales HTTP, HTTPS y Container (Dockerfile). |
 | [Dockerfile](Dockerfile) | Construccion por etapas y ejecucion de `Bookify.Api.dll`. |
 | [Dockerfile.original](Dockerfile.original) | Copia del Dockerfile inicial, sin copiar las tres bibliotecas antes de restaurar; Compose no la utiliza. |
-| [Bookify.Api.http](Bookify.Api.http) | Solicitud de ejemplo de la plantilla a `/weatherforecast/`, que ya no corresponde a un endpoint existente. |
+| [Bookify.Api.http](Bookify.Api.http) | Peticiones de apartamentos, reservas, reviews, Swagger y OpenAPI. Anadir Authorization: Bearer a las peticiones protegidas. |
 
 El archivo `.csproj.user`, si existe en una maquina, contiene preferencias locales de Visual Studio, como el perfil seleccionado. No sustituye la configuracion compartida. Las salidas `bin/` y `obj/` se generan al construir.
 
@@ -66,7 +132,7 @@ El arranque sigue este orden:
 
 El registro `AddOpenApi()` se ejecuta siempre; el endpoint solo se publica en Development. `MapOpenApi()` proporciona JSON y `UseSwaggerUI()` proporciona la interfaz. Esta ultima se configura con `SwaggerEndpoint("/openapi/v1.json", "Bookify API")`, por lo que no usa `/swagger/v1/swagger.json`.
 
-`UseCustomExceptionHandler()` registra el middleware propio de excepciones antes de los controladores. No hay un endpoint para `/`, autenticacion, autorizacion ni health checks HTTP configurados. Una respuesta 404 en la raiz no demuestra que la API este detenida.
+`UseCustomExceptionHandler()` precede a UseAuthentication y UseAuthorization. JWT protege el controlador de apartamentos. No hay un endpoint para `/` ni health checks HTTP configurados; un 404 en la raiz no demuestra que la API este detenida.
 
 ## Extensions/ApplicationBuilderExtensions.cs
 
@@ -127,7 +193,7 @@ $apartment = @{
 Invoke-RestMethod -Method Post -Uri 'http://localhost:5285/api/apartments' -ContentType 'application/json' -Body ($apartment | ConvertTo-Json)
 ```
 
-En Compose utilizar el puerto publicado 5000. El ejemplo rellena el nombre para cumplir la regla actual; el endpoint no rellena ni recorta nombres silenciosamente. No hace falta otra migracion: se usan las tablas y columnas ya mapeadas por EF. Las restricciones de autorizacion siguen siendo las del proyecto actual, que todavia no implementa autenticacion.
+En Compose utilizar el puerto publicado 5000. El ejemplo requiere ademas la cabecera Authorization: Bearer con un access token valido. El endpoint no rellena ni recorta nombres silenciosamente. No hace falta otra migracion: se usan las tablas y columnas ya mapeadas por EF.
 
 ## Alta de resenas
 
@@ -325,7 +391,7 @@ Referencias: [TLS de Keycloak](https://www.keycloak.org/server/enabletls), [Post
 
 ## Comprobaciones y limites actuales
 
-`Bookify.Api.http` conserva una variable de host `http://localhost:5285` y un GET a `/weatherforecast/` con `Accept: application/json`. Puede abrirse en el cliente HTTP del IDE, pero esa ruta no existe en los controladores actuales: para probar Bookify hay que usar las rutas de apartamentos y reservas explicadas arriba.
+`Bookify.Api.http` usa el host local 5285 y contiene peticiones de los endpoints actuales. Sustituir los identificadores de ejemplo y anadir un access token a las peticiones de apartamentos; el archivo no obtiene ni incluye tokens automaticamente.
 
 `Dockerfile.original` conserva las etapas de la plantilla y solo copia el proyecto Api antes de `restore`. El Dockerfile activo copia tambien los proyectos referenciados antes de restaurar. Compose apunta expresamente a `Bookify.Api/Dockerfile`; la copia `.original` no interviene en esa construccion.
 
@@ -333,7 +399,7 @@ Referencias: [TLS de Keycloak](https://www.keycloak.org/server/enabletls), [Post
 - La base debe estar lista al arrancar; Compose ahora espera el healthcheck TCP de PostgreSQL mediante `depends_on: condition: service_healthy`. Una caida posterior sigue requiriendo tratamiento de errores y recuperacion.
 - HTTPS requiere configurar y confiar en el certificado local; montar la carpeta no resuelve automaticamente ambas cosas.
 - La migracion genera tablas con mayusculas y Dapper consulta nombres sin comillas en minusculas. El parametro y las columnas de recargo de GetBooking tambien requieren alineacion.
-- El middleware propio devuelve 400 para `ValidationException` y 500 para otras excepciones. No hay autenticacion o autorizacion.
+- El middleware propio devuelve 400 para `ValidationException` y 500 para otras excepciones. JWT y [Authorize] protegen apartamentos; reservas y reviews no tienen esa proteccion.
 - Existen altas de apartamentos y resenas mediante `POST /api/apartments` y `POST /api/reviews`. No existen endpoints de confirmacion, cancelacion ni altas de usuarios.
 
 Al agregar un endpoint, definir el contrato HTTP, enviar el mensaje apropiado por `ISender`, comprobar los resultados y concretar el tratamiento de excepciones. Mantener las reglas y el guardado en las capas que ya los poseen.
