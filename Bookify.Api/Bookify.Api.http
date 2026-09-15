@@ -1,6 +1,83 @@
 @Bookify.Api_HostAddress = http://localhost:5285
+# HTTPS local: https://localhost:7261
+# Docker Compose: http://localhost:5000
 
-GET {{Bookify.Api_HostAddress}}/weatherforecast/
+# Sustituir por identificadores reales antes de ejecutar las peticiones dependientes.
+# ApartmentId: GUID devuelto al crear un apartamento o al buscar apartamentos.
+# UserId: usuario existente en la base de datos; no hay endpoint de alta de usuarios.
+# BookingId: GUID devuelto al reservar.
+# CompletedBookingId: reserva existente con estado Completed.
+@ApartmentId = 00000000-0000-0000-0000-000000000000
+@UserId = 00000000-0000-0000-0000-000000000000
+@BookingId = 00000000-0000-0000-0000-000000000000
+@CompletedBookingId = 00000000-0000-0000-0000-000000000000
+@StartDate = 2026-10-01
+@EndDate = 2026-10-05
+
+### Swagger UI (solo Development)
+GET {{Bookify.Api_HostAddress}}/swagger/index.html
+Accept: text/html
+
+### Documento OpenAPI (solo Development)
+GET {{Bookify.Api_HostAddress}}/openapi/v1.json
 Accept: application/json
+
+### Crear apartamento: 201 con el GUID generado
+# Name: obligatorio, maximo 200 caracteres. Description: maximo 2000.
+# PriceAmount > 0; CleaningFeeAmount >= 0; Currency: EUR o USD.
+# Amenities usa valores numericos del enum: 1 = Wifi, 3 = Parking.
+POST {{Bookify.Api_HostAddress}}/api/apartments
+Content-Type: application/json
+Accept: application/json
+
+{
+  "name": "Apartamento Madrid Centro",
+  "description": "Apartamento con wifi y aparcamiento.",
+  "country": "Spain",
+  "state": "Madrid",
+  "zipCode": "28001",
+  "city": "Madrid",
+  "street": "Calle Mayor 10",
+  "priceAmount": 100,
+  "cleaningFeeAmount": 25,
+  "currency": "EUR",
+  "amenities": [1, 3]
+}
+
+### Buscar apartamentos disponibles: 200 con una lista (puede estar vacia)
+GET {{Bookify.Api_HostAddress}}/api/apartments?startDate={{StartDate}}&endDate={{EndDate}}
+Accept: application/json
+
+### Reservar apartamento: requiere ApartmentId y UserId existentes
+# StartDate debe ser anterior a EndDate y no debe solaparse con una reserva activa.
+# Devuelve 201 con el GUID de la reserva y la cabecera Location.
+POST {{Bookify.Api_HostAddress}}/api/bookings
+Content-Type: application/json
+Accept: application/json
+
+{
+  "apartmentId": "{{ApartmentId}}",
+  "userId": "{{UserId}}",
+  "startDate": "{{StartDate}}",
+  "endDate": "{{EndDate}}"
+}
+
+### Consultar reserva: 200 si existe, 404 si no existe
+GET {{Bookify.Api_HostAddress}}/api/bookings/{{BookingId}}
+Accept: application/json
+
+### Crear review: 201 con el GUID generado
+# Solo se admiten reservas Completed, no una reserva recien creada.
+# Actualmente no hay un endpoint para completar reservas.
+# Rating: 1 a 5. Comment: obligatorio, maximo 200 caracteres.
+POST {{Bookify.Api_HostAddress}}/api/reviews
+Content-Type: application/json
+Accept: application/json
+
+{
+  "bookingId": "{{CompletedBookingId}}",
+  "rating": 5,
+  "comment": "Estancia agradable y apartamento bien equipado."
+}
 
 ###
