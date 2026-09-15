@@ -1,0 +1,245 @@
+{
+  "info": {
+    "_postman_id": "d20933d4-eac4-4176-afe4-525f04b682b3",
+    "name": "Bookify",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "23378263"
+  },
+  "item": [
+    {
+      "name": "APARTMENT",
+      "item": [
+        {
+          "name": "SEARCH",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BookifyUrl}}/api/apartments?startDate=07-22-2023&endDate=07-23-2023",
+              "host": [
+                "{{BookifyUrl}}"
+              ],
+              "path": [
+                "api",
+                "apartments"
+              ],
+              "query": [
+                {
+                  "key": "startDate",
+                  "value": "07-22-2023"
+                },
+                {
+                  "key": "endDate",
+                  "value": "07-23-2023"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "CREATE",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"name\": \"Nombre\",\r\n  \"description\": \"Descripcion\",\r\n  \"country\": \"España\",\r\n  \"state\": \"Andalucia\",\r\n  \"zipCode\": \"04007\",\r\n  \"city\": \"Almeria\",\r\n  \"street\": \"Calle Galicia 6\",\r\n  \"priceAmount\": 100.5,\r\n  \"cleaningFeeAmount\": 75,\r\n  \"currency\": \"EUR2\",\r\n  \"amenities\": [\r\n    1,2\r\n  ]\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BookifyUrl}}/api/apartments",
+              "host": [
+                "{{BookifyUrl}}"
+              ],
+              "path": [
+                "api",
+                "apartments"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "BOOKING",
+      "item": [
+        {
+          "name": "GET BOOKING",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BookifyUrl}}/api/bookings/e24c7948-24eb-4d22-9ae3-466cc697ff0e",
+              "host": [
+                "{{BookifyUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "e24c7948-24eb-4d22-9ae3-466cc697ff0e"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "IDENTITY",
+      "item": [
+        {
+          "name": "Access Token",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "client_id",
+                  "value": "bookify-auth-client",
+                  "type": "text",
+                  "uuid": "690804c7-cb33-42aa-86a7-6422ff99ca1e"
+                },
+                {
+                  "key": "grant_type",
+                  "value": "password",
+                  "type": "text",
+                  "uuid": "7c77b6f2-0f00-4eb8-b1c7-4c87b6e40993"
+                },
+                {
+                  "key": "client_secret",
+                  "value": "3E3yvXaYppoYBF3Ir6DgtEzADKKzSurZ",
+                  "type": "text",
+                  "uuid": "2f69cd3a-e3b0-4ca3-b756-25e483b331c9"
+                },
+                {
+                  "key": "scope",
+                  "value": "openid",
+                  "type": "text",
+                  "uuid": "34426893-1d77-452e-885a-e60f5e96f0f7"
+                },
+                {
+                  "key": "username",
+                  "value": "test@test.com",
+                  "type": "text",
+                  "uuid": "b7e4c248-bd51-4d48-bd87-44602181fd6c"
+                },
+                {
+                  "key": "password",
+                  "value": "123",
+                  "type": "text",
+                  "uuid": "db52cced-38e1-41a1-96cd-5559322ece2f"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://localhost:18080/realms/bookify/protocol/openid-connect/token",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "18080",
+              "path": [
+                "realms",
+                "bookify",
+                "protocol",
+                "openid-connect",
+                "token"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Access Token Admin",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "client_id",
+                  "value": "bookify-admin-client",
+                  "type": "text",
+                  "uuid": "690804c7-cb33-42aa-86a7-6422ff99ca1e"
+                },
+                {
+                  "key": "grant_type",
+                  "value": "client_credentials",
+                  "type": "text",
+                  "uuid": "7c77b6f2-0f00-4eb8-b1c7-4c87b6e40993"
+                },
+                {
+                  "key": "client_secret",
+                  "value": "UZDmbNxWmV4TlpaCRcju6pMRsyuV3er1",
+                  "type": "text",
+                  "uuid": "2f69cd3a-e3b0-4ca3-b756-25e483b331c9"
+                },
+                {
+                  "key": "scope",
+                  "value": "openid",
+                  "type": "text",
+                  "uuid": "34426893-1d77-452e-885a-e60f5e96f0f7"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://localhost:18080/realms/bookify/protocol/openid-connect/token",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "18080",
+              "path": [
+                "realms",
+                "bookify",
+                "protocol",
+                "openid-connect",
+                "token"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "BookifyUrl",
+      "value": ""
+    }
+  ]
+}

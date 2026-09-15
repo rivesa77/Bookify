@@ -8,6 +8,7 @@ namespace Bookify.Infrastructure
     using Bookify.Domain.Bookings;
     using Bookify.Domain.Reviews;
     using Bookify.Domain.Users;
+    using Bookify.Infrastructure.Authentication;
     using Bookify.Infrastructure.Clock;
     using Bookify.Infrastructure.Data;
     using Bookify.Infrastructure.Email;
@@ -31,6 +32,10 @@ namespace Bookify.Infrastructure
             services
                 .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 .AddJwtBearer();
+
+            services
+                .Configure<AuthenticationOptions>(configuration.GetSection("Authentication"))
+                .ConfigureOptions<JwtBearerOptionsSetup>();
 
             return services;
         }
