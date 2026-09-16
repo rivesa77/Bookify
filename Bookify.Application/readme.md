@@ -8,6 +8,24 @@ Esta guia distingue el comportamiento implementado de las limitaciones pendiente
 
 [Guia de la solucion](../readme.md) | [Domain](../Bookify.Domain/readme.md) | [Infrastructure](../Bookify.Infrastructure/readme.md) | [Api](../Bookify.Api/readme.md)
 
+## Users/CreateUser
+
+| Archivo | Responsabilidad actual |
+| --- | --- |
+| [CreateUserCommand.cs](Users/CreateUser/CreateUserCommand.cs) | ICommand<Guid> con FirtsName, LastName, Email y Password. FirtsName es el nombre literal actual, con errata; el contrato HTTP utiliza FirstName. |
+| [CreateUserCommandHandlerValidator.cs](Users/CreateUser/CreateUserCommandHandlerValidator.cs) | Valida nombres obligatorios de hasta 100 caracteres, email obligatorio con formato y password de 5 a 10 caracteres. |
+| [CreateUserCommandHandler.cs](Users/CreateUser/CreateUserCommandHandler.cs) | Contiene una clase denominada CreateApartmentCommandHandler, aunque maneja CreateUserCommand. Es una errata de nombre, no un flujo de apartamentos. |
+| [IAuthenticationService.cs](Abstractions/Authentication/IAuthenticationService.cs) | Contrato RegisterAsync(User, string password, CancellationToken) que devuelve el identificador externo como string. Infrastructure implementa el acceso HTTP a Keycloak. |
+
+AddApplication descubre el handler y el validador mediante escaneo. Al enviar el comando por ISender se ejecutan los behaviors de logging y validacion antes del caso de uso.
+
+El handler crea User con FirstName, LastName y Email; User.Create genera el GUID local y acumula UserCreatedDomainEvent. Luego espera RegisterAsync para crear la identidad externa, asigna el resultado con SetIdentityId, agrega el usuario mediante IUserRepository.Add y llama una vez a SaveChangesAsync. Devuelve el GUID local, no un JWT ni el identificador de Keycloak. La password se pasa al servicio externo, no se almacena en User.
+
+No comprueba duplicados previamente, no captura errores HTTP y no convierte conflictos de Keycloak en errores Result especificos. Si falla Keycloak no llega al guardado local; si falla el guardado despues del registro externo, no elimina la identidad creada. No existe transaccion distribuida ni compensacion. UserCreatedDomainEvent sigue sin consumidor registrado.
+
+La validacion del comando no demuestra propiedad del email: la implementacion externa lo marca verificado directamente. Las pruebas futuras deben cubrir validacion, propagacion del identificador externo, orden de llamadas y fallos en ambos sistemas; no dar por validado el flujo por compilar.
+
+
 ## JWT y acceso a los casos de uso
 
 JWT se valida en el pipeline HTTP de API mediante Infrastructure. Application no incorpora un behavior MediatR de autorizacion, un servicio de usuario actual ni lectura de claims.

@@ -4,6 +4,51 @@ Esta es la capa de entrada HTTP y el host ejecutable de Bookify. Recibe solicitu
 
 [Guia de la solucion](../readme.md) | [Domain](../Bookify.Domain/readme.md) | [Application](../Bookify.Application/readme.md) | [Infrastructure](../Bookify.Infrastructure/readme.md)
 
+## Registro de usuarios
+
+POST /api/users/register recibe CreateUserRequest (FirstName, LastName, Email, Password). UsersController tiene [Authorize], pero Register declara [AllowAnonymous], por lo que el alta no requiere JWT. El controlador convierte la entrada a CreateUserCommand y llama a ISender.
+
+```http
+POST http://localhost:5285/api/users/register
+Content-Type: application/json
+
+{
+  "firstName": "Ana",
+  "lastName": "Garcia",
+  "email": "ana@example.com",
+  "password": "<clave>"
+}
+```
+
+Sustituir la clave de ejemplo por una valida antes de enviar. No guardar credenciales reales en peticiones versionadas. El validador actual exige nombre y apellido no vacios de hasta 100 caracteres, email valido y password entre 5 y 10 caracteres. La politica de Keycloak puede ser mas restrictiva; este limite de longitud describe el codigo, no una recomendacion de seguridad.
+
+La respuesta exitosa es **200 OK con el objeto Result<Guid> completo**, no 201 ni un JWT. Sus propiedades incluyen value (User.Id de Bookify), isSuccess, isFailure y error. El identificador externo de Keycloak se guarda en User.Identity, pero no es el GUID devuelto por el comando. Si se devuelve un Result fallido, el controlador responde 400; el handler actual no transforma errores de Keycloak en Result. Las excepciones HTTP o de persistencia llegan al middleware como errores tecnicos, normalmente 500.
+
+Archivos: [UsersController.cs](Controllers/Users/UsersController.cs) implementa el endpoint y [CreateUserRequest.cs](Controllers/Users/CreateUserRequest.cs) define el contrato HTTP. No hay endpoint de login ni retorno de tokens al registrar.
+
+### Configuracion administrativa de Keycloak
+
+La seccion Authentication configura validacion de tokens entrantes; la nueva seccion Keycloak configura llamadas salientes a la API administrativa. Se necesitan AdminUrl, TokenUrl, AdminClientId y AdminClientSecret. AuthClientId y AuthClientSecret estan declarados, pero no se usan todavia en el flujo implementado.
+
+El JSON actual utiliza /auth/admin/realms/bookify/ y /auth/realms/bookify/protocol/openid-connect/token. El Compose local no configura ese prefijo; para el despliegue actual comprobar las rutas sin /auth. Ejemplo para API ejecutada en Windows:
+
+```json
+{
+  "Keycloak": {
+    "AdminUrl": "http://localhost:18080/admin/realms/bookify/",
+    "TokenUrl": "http://localhost:18080/realms/bookify/protocol/openid-connect/token",
+    "AdminClientId": "bookify-admin-client"
+  }
+}
+```
+
+AdminUrl debe terminar en / porque el cliente anade la ruta relativa users. Desde Compose utilizar el nombre bookify-idp y puerto 8080 en lugar de localhost:18080. Proporcionar AdminClientSecret desde secretos de usuario o Keycloak__AdminClientSecret; no copiar secretos reales a la documentacion. El JSON versionado contiene valores de secretos: si se han compartido, deben rotarse y externalizarse.
+
+Preparar un cliente confidencial con cuenta de servicio y permisos administrativos para crear usuarios en el realm (por ejemplo, el rol realm-management/manage-users cuando corresponda a la configuracion usada). El alta solicita client_credentials; no usa la cuenta admin del bootstrap ni el token del solicitante. Usar HTTPS en produccion para proteger contrasenas y secretos.
+
+Aplicar la migracion Add_User_IdentityId antes de guardar nuevos usuarios. El flujo no es atomico entre Keycloak y PostgreSQL: un fallo local despues del alta externa puede dejar un usuario solo en Keycloak. No hay compensacion ni reintento idempotente implementados. No se ha verificado aqui el registro real contra ambos sistemas.
+
+
 ## Autenticacion JWT
 
 ### Flujo y endpoints
@@ -17,6 +62,7 @@ Keycloak emite access tokens; Bookify los valida, no implementa login ni emision
 | GET /api/bookings/{id} | Sin [Authorize] ni politica global. |
 | POST /api/bookings | Sin [Authorize] ni politica global. |
 | POST /api/reviews | Sin [Authorize] ni politica global. |
+| POST /api/users/register | Anonimo por [AllowAnonymous], aunque UsersController tiene [Authorize]. |
 
 No se exigen roles, scopes ni propiedad de los recursos. En endpoints protegidos, un token ausente o invalido produce normalmente 401. Un 403 corresponde a identidad autenticada que no cumple una politica; no hay politicas propias adicionales actualmente. Validar un JWT no vincula automaticamente su claim sub con User.Id.
 
@@ -400,6 +446,6 @@ Referencias: [TLS de Keycloak](https://www.keycloak.org/server/enabletls), [Post
 - HTTPS requiere configurar y confiar en el certificado local; montar la carpeta no resuelve automaticamente ambas cosas.
 - La migracion genera tablas con mayusculas y Dapper consulta nombres sin comillas en minusculas. El parametro y las columnas de recargo de GetBooking tambien requieren alineacion.
 - El middleware propio devuelve 400 para `ValidationException` y 500 para otras excepciones. JWT y [Authorize] protegen apartamentos; reservas y reviews no tienen esa proteccion.
-- Existen altas de apartamentos y resenas mediante `POST /api/apartments` y `POST /api/reviews`. No existen endpoints de confirmacion, cancelacion ni altas de usuarios.
+- Existen altas de apartamentos, resenas y usuarios mediante `POST /api/apartments`, `POST /api/reviews` y `POST /api/users/register`. No existen endpoints de confirmacion ni cancelacion.
 
 Al agregar un endpoint, definir el contrato HTTP, enviar el mensaje apropiado por `ISender`, comprobar los resultados y concretar el tratamiento de excepciones. Mantener las reglas y el guardado en las capas que ya los poseen.

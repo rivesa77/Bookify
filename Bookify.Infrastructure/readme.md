@@ -6,6 +6,40 @@ Aqui viven las implementaciones concretas de persistencia, acceso SQL, fecha/hor
 
 [Guia de la solucion](../readme.md) | [Domain](../Bookify.Domain/readme.md) | [Application](../Bookify.Application/readme.md) | [Api](../Bookify.Api/readme.md)
 
+## Registro administrativo en Keycloak
+
+### Clases y modelos
+
+| Archivo | Funcion |
+| --- | --- |
+| [Authentication/KeycloakOptions.cs](Authentication/KeycloakOptions.cs) | AdminUrl, TokenUrl, AdminClientId y AdminClientSecret para el alta; AuthClientId y AuthClientSecret aun no tienen consumidor. Todos parten de cadenas vacias y no hay ValidateOnStart. |
+| [Authentication/AuthenticationService.cs](Authentication/AuthenticationService.cs) | Implementa IAuthenticationService con HttpClient. Convierte User al modelo externo, agrega una credencial password no temporal, envia POST relativo a users y extrae el id de Location. |
+| [Authentication/AdminAuthorizationDelegatingHandler.cs](Authentication/AdminAuthorizationDelegatingHandler.cs) | Obtiene un token administrativo, coloca Authorization: Bearer en la solicitud original y exige respuesta HTTP exitosa. |
+| [Authentication/Models/AuthorizationToken.cs](Authentication/Models/AuthorizationToken.cs) | Deserializa access_token mediante JsonPropertyName. No representa expiracion ni refresh token. |
+| [Authentication/Models/UserRepresentationModel.cs](Authentication/Models/UserRepresentationModel.cs) | DTO externo con datos de usuario, roles, grupos, atributos, credenciales y metadatos. FromUser copia nombre/apellido/email, usa email como username y establece Enabled=true y EmailVerified=true. |
+| [Authentication/Models/CredentialRepresentationModel.cs](Authentication/Models/CredentialRepresentationModel.cs) | DTO de credencial con Type, Value, Temporary y campos adicionales de algoritmo, sal, hash, contador, dispositivo y fechas. El alta solo asigna password, valor recibido y Temporary=false; no calcula hashes en Bookify. |
+
+FromUser deja atributos y acciones requeridas vacios y asigna CreatedTimestamp con ToUnixTimeSeconds. El formato temporal y los campos adicionales deben contrastarse con el contrato de la version de Keycloak usada; el hecho de disponer de este DTO no demuestra compatibilidad completa. EmailVerified=true no ejecuta una verificacion de correo y es una decision pendiente de revisar.
+
+### Registro y recorrido HTTP
+
+DependencyInjection enlaza KeycloakOptions con Keycloak, registra AdminAuthorizationDelegatingHandler como transient y un cliente tipado AddHttpClient<IAuthenticationService, AuthenticationService>. Su BaseAddress procede de AdminUrl y se agrega el delegating handler. Las conexiones HTTP las gestiona IHttpClientFactory.
+
+Por cada solicitud administrativa el handler obtiene otro token: POST a TokenUrl con formulario client_id, client_secret, scope=openid email y grant_type=client_credentials. Usa base.SendAsync para no invocarse recursivamente. Tras EnsureSuccessStatusCode, deserializa AuthorizationToken, agrega Bearer y envia la solicitud original. Tambien exige exito en esa respuesta. No hay cache de tokens, refresh ni politica de reintentos propia.
+
+AuthenticationService espera Location y obtiene el texto posterior a users/. Si falta Location lanza InvalidOperationException. No valida expresamente que exista el segmento ni elimina posibles componentes adicionales de la URL. Un 409 de duplicado u otro error remoto genera HttpRequestException en el handler, no un error de dominio especifico. Los HttpResponseMessage y algunos mensajes/contenidos temporales no se liberan explicitamente en el codigo actual; no confundir esto con la gestion del pool de HttpClientFactory.
+
+La [guia de API](../Bookify.Api/readme.md#registro-de-usuarios) contiene rutas, configuracion y requisitos del cliente administrativo. Las URLs actuales incluyen /auth, que debe alinearse con el despliegue; AdminUrl necesita la barra final. No copiar los secretos existentes del JSON a otros archivos: externalizarlos y rotarlos si se han expuesto.
+
+### Persistencia del identificador externo
+
+UserConfiguration conserva el indice unico de Email y agrega un indice unico sobre Id, aunque Id ya es clave primaria. **No es un indice de Identity.** Identity se mapea por convencion.
+
+[20260916085204_Add_User_IdentityId.cs](Migrations/20260916085204_Add_User_IdentityId.cs) agrega Users.identity como text nullable y el indice ix_users_id. Down elimina ambos. El archivo Designer representa el modelo de esa migracion y ApplicationDbContextModelSnapshot se actualiza para futuras diferencias de modelo. No se vinculan retroactivamente los usuarios existentes con Keycloak; sus filas pueden tener identity NULL.
+
+En Development, ApplyMigration aplica esta migracion pendiente al arrancar. En otros entornos aplicarla de forma controlada y con copia de seguridad. No se ha ejecutado una migracion ni alterado una base de datos durante esta actualizacion documental.
+
+
 ## Authentication: JWT Bearer
 
 Infrastructure configura la validacion tecnica de tokens; Keycloak conserva la responsabilidad de emitirlos.

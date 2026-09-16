@@ -1,5 +1,14 @@
 # Bookify
 
+## Registro de usuarios: cambios actuales
+
+Existe POST /api/users/register, anonimo mediante [AllowAnonymous]. Recibe nombre, apellido, email y password, registra la identidad en Keycloak, guarda User.Identity y persiste el usuario local. Responde 200 con Result<Guid>, no con un JWT. El GUID de respuesta es User.Id de Bookify.
+
+Application incorpora CreateUser e IAuthenticationService. Infrastructure implementa el cliente administrativo HTTP, obtiene un token por client_credentials y agrega la migracion Add_User_IdentityId. No hay transaccion comun ni compensacion entre Keycloak y PostgreSQL.
+
+Consultar [API](Bookify.Api/readme.md#registro-de-usuarios), [Application](Bookify.Application/readme.md#userscreateuser), [Infrastructure](Bookify.Infrastructure/readme.md#registro-administrativo-en-keycloak) y [Domain](Bookify.Domain/readme.md#useridentity-y-registro-externo). Requisitos pendientes de comprobar: permisos del cliente administrativo, URLs con o sin /auth, aplicacion de la migracion y externalizacion de secretos. Los README no reproducen valores secretos del JSON.
+
+
 ## JWT y Keycloak
 
 La API incorpora JWT Bearer: Infrastructure registra el esquema y API ejecuta UseAuthentication antes de UseAuthorization. GET y POST /api/apartments requieren un access token por [Authorize]. Reservas y reviews siguen sin proteccion por atributos ni politica global. No hay roles, control de propiedad ni vinculacion automatica entre sub y User.Id.

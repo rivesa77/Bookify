@@ -6,11 +6,20 @@ La capa Domain no deberia depender de detalles externos como bases de datos, con
 
 [Guia de la solucion](../readme.md) | [Application](../Bookify.Application/readme.md) | [Infrastructure](../Bookify.Infrastructure/readme.md) | [Api](../Bookify.Api/readme.md)
 
+## User.Identity y registro externo
+
+User incorpora Identity (string con valor inicial vacio y setter privado) y SetIdentityId(string identityId), que asigna el identificador devuelto por el proveedor externo. El metodo no comprueba valor vacio, formato, unicidad ni si ya existia un identificador.
+
+User.Id sigue siendo el GUID local generado por User.Create. Identity guarda el id de Keycloak y permite representar esa asociacion; no sustituye el GUID usado por reservas. Los usuarios antiguos no se enlazan automaticamente. No hay aun resolucion del claim sub hacia User ni autorizacion basada en ese enlace.
+
+User.Create sigue acumulando UserCreatedDomainEvent, sin realizar operaciones HTTP ni guardar en BD. El nuevo caso de uso CreateUser de Application coordina la creacion externa, SetIdentityId y la persistencia local. Domain no almacena passwords ni conoce KeycloakOptions o HttpClient. El evento no tiene handler actual.
+
+
 ## Identidad de dominio y JWT
 
 Keycloak autentica identidades externas; User modela el usuario del negocio. JWT no introduce dependencias de HttpContext, ASP.NET Core ni Keycloak en Domain.
 
-No existe una vinculacion implementada entre el claim sub y User.Id. No asumir que ambos identificadores son equivalentes ni que validar un token crea un usuario de dominio. UserErrors.InvalidCredentials sigue declarado, sin implementar un caso de uso de login o almacenar contrasenas en User.
+User.Identity almacena el identificador externo durante el registro, pero no existe todavia resolucion del claim sub hacia User.Id. No asumir que ambos identificadores son equivalentes ni que validar un token crea un usuario de dominio. UserErrors.InvalidCredentials sigue declarado, sin implementar un caso de uso de login o almacenar contrasenas en User.
 
 Review.Create copia booking.UserId y comprueba elegibilidad, pero no autentica al solicitante ni comprueba su propiedad sobre la reserva. La proteccion HTTP de apartamentos vive en API; no sustituye reglas de acceso a reservas o reviews. Consultar [Application](../Bookify.Application/readme.md#jwt-y-acceso-a-los-casos-de-uso) para los limites de autorizacion actuales.
 
@@ -528,7 +537,7 @@ UserCreatedDomainEvent
 
 Esto permite que otras partes del sistema reaccionen, por ejemplo enviando un correo de bienvenida o registrando auditoria.
 
-Esos efectos son posibilidades, no implementaciones actuales: no hay handler de `UserCreatedDomainEvent` ni comando de alta de usuarios en Application. `User.Create` genera un `Guid`, asigna los objetos de valor y acumula el evento, pero no guarda ni verifica unicidad o formato del email.
+Esos efectos del evento son posibilidades: no hay handler de `UserCreatedDomainEvent`. Application ya incorpora CreateUser para coordinar el registro externo y el guardado. `User.Create` genera un `Guid`, asigna los objetos de valor y acumula el evento, pero no guarda ni verifica unicidad o formato del email.
 
 ### FirstName
 
