@@ -13,7 +13,11 @@ Consultar [API](Bookify.Api/readme.md#registro-de-usuarios), [Application](Booki
 
 La API incorpora JWT Bearer: Infrastructure registra el esquema y API ejecuta UseAuthentication antes de UseAuthorization. GET y POST /api/apartments requieren un access token por [Authorize]. Reservas y reviews siguen sin proteccion por atributos ni politica global. No hay roles, control de propiedad ni vinculacion automatica entre sub y User.Id.
 
-La seccion Authentication requiere Audience, Issuer, MetadataUrl y RequireHttpsMetadata. El JSON actual tiene una discrepancia: usa ValidIssuer en lugar de Issuer. Ademas, MetadataUrl apunta a bookify-idp:8080; la API local necesita una direccion alcanzable, normalmente localhost:18080. Audience=account debe coincidir con aud del token real.
+La seccion Authentication utiliza Audience, Issuer, MetadataUrl y RequireHttpsMetadata. Development apunta a localhost:18080; Compose sobrescribe metadatos y URLs administrativas con bookify-idp:8080. El emisor publico se mantiene en http://localhost:18080/realms/bookify en ambos modos. Audience=account debe coincidir con aud del token real.
+
+Para depurar la API local con dependencias en Docker, arrancar solo bookify-db y bookify-idp, y ejecutar el perfil http o https de Bookify.Api. PostgreSQL usa localhost:5432 y Keycloak localhost:18080. No hace falta editar hosts. Si Docker se creo desde Visual Studio, reutilizar su proyecto Compose para no duplicar contenedores. No arrancar otra instancia PostgreSQL local en el mismo puerto.
+
+Las variables de entorno y secretos de usuario prevalecen sobre appsettings.Development.json: revisar posibles URLs antiguas configuradas alli. Reiniciar la API tras cambiar las opciones. La API aplica migraciones y sembrado en Development. Al cambiar el hostname de Keycloak, obtener tokens nuevos. Estas URLs HTTP son solo para desarrollo.
 
 La [guia JWT de API](Bookify.Api/readme.md#autenticacion-jwt) explica configuracion, uso manual y diagnostico. [Infrastructure](Bookify.Infrastructure/readme.md#authentication-jwt-bearer) detalla las clases. Los tests que invocan metodos de controladores no verifican [Authorize]; no se ha validado aqui un flujo JWT de extremo a extremo.
 

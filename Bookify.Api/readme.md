@@ -30,7 +30,7 @@ Archivos: [UsersController.cs](Controllers/Users/UsersController.cs) implementa 
 
 La seccion Authentication configura validacion de tokens entrantes; la nueva seccion Keycloak configura llamadas salientes a la API administrativa. Se necesitan AdminUrl, TokenUrl, AdminClientId y AdminClientSecret. AuthClientId y AuthClientSecret estan declarados, pero no se usan todavia en el flujo implementado.
 
-El JSON actual utiliza /auth/admin/realms/bookify/ y /auth/realms/bookify/protocol/openid-connect/token. El Compose local no configura ese prefijo; para el despliegue actual comprobar las rutas sin /auth. Ejemplo para API ejecutada en Windows:
+El JSON Development utiliza localhost:18080 y rutas sin /auth, de acuerdo con el Keycloak actual. Compose sobrescribe AdminUrl y TokenUrl con bookify-idp:8080. Configuracion para API ejecutada en Windows:
 
 ```json
 {
@@ -77,9 +77,9 @@ Infrastructure lee Authentication mediante AuthenticationOptions y JwtBearerOpti
 | MetadataUrl | Documento OpenID Connect; anuncia tambien las claves en jwks_uri. |
 | RequireHttpsMetadata | Exige HTTPS al obtener metadatos; false solo para desarrollo HTTP. |
 
-**Discrepancia actual:** appsettings.Development.json contiene ValidIssuer, pero la propiedad se llama Issuer. Esa clave no se enlaza y el emisor explicito queda vacio. El manejador tambien obtiene el emisor del descubrimiento; esto no significa que la validacion de issuer este desactivada. Debe corregirse la clave de configuracion antes de depender de ese valor explicito. La URL actual usa bookify-idp:8080, que se resuelve en Compose, no normalmente desde Windows.
+appsettings.Development.json utiliza ahora Issuer, coincidiendo con AuthenticationOptions, y MetadataUrl con localhost:18080 para el proceso local. Compose sobrescribe MetadataUrl con bookify-idp:8080, manteniendo el emisor publico http://localhost:18080/realms/bookify. Keycloak fija KC_HOSTNAME=http://localhost:18080 y KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true para anunciar claves y endpoints de backend alcanzables por la red desde la que se consulta. No se desactiva la validacion de firma, audiencia ni emisor.
 
-Ejemplo para API local y Keycloak publicado en localhost:18080, proporcionado mediante secretos de usuario o configuracion externa (no es el JSON actual):
+Configuracion Development para API local y Keycloak publicado en localhost:18080:
 
 ```json
 {

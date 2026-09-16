@@ -16,10 +16,10 @@ Aqui viven las implementaciones concretas de persistencia, acceso SQL, fecha/hor
 | [Authentication/AuthenticationService.cs](Authentication/AuthenticationService.cs) | Implementa IAuthenticationService con HttpClient. Convierte User al modelo externo, agrega una credencial password no temporal, envia POST relativo a users y extrae el id de Location. |
 | [Authentication/AdminAuthorizationDelegatingHandler.cs](Authentication/AdminAuthorizationDelegatingHandler.cs) | Obtiene un token administrativo, coloca Authorization: Bearer en la solicitud original y exige respuesta HTTP exitosa. |
 | [Authentication/Models/AuthorizationToken.cs](Authentication/Models/AuthorizationToken.cs) | Deserializa access_token mediante JsonPropertyName. No representa expiracion ni refresh token. |
-| [Authentication/Models/UserRepresentationModel.cs](Authentication/Models/UserRepresentationModel.cs) | DTO externo con datos de usuario, roles, grupos, atributos, credenciales y metadatos. FromUser copia nombre/apellido/email, usa email como username y establece Enabled=true y EmailVerified=true. |
-| [Authentication/Models/CredentialRepresentationModel.cs](Authentication/Models/CredentialRepresentationModel.cs) | DTO de credencial con Type, Value, Temporary y campos adicionales de algoritmo, sal, hash, contador, dispositivo y fechas. El alta solo asigna password, valor recibido y Temporary=false; no calcula hashes en Bookify. |
+| [Authentication/Models/UserRepresentationModel.cs](Authentication/Models/UserRepresentationModel.cs) | DTO minimo de alta: nombre, apellido, email, username, Enabled, EmailVerified y Credentials. FromUser usa email como username y establece Enabled=true y EmailVerified=true. |
+| [Authentication/Models/CredentialRepresentationModel.cs](Authentication/Models/CredentialRepresentationModel.cs) | DTO de credencial limitado a Type, Value y Temporary. Envia password, valor recibido y Temporary=false; no calcula hashes en Bookify. |
 
-FromUser deja atributos y acciones requeridas vacios y asigna CreatedTimestamp con ToUnixTimeSeconds. El formato temporal y los campos adicionales deben contrastarse con el contrato de la version de Keycloak usada; el hecho de disponer de este DTO no demuestra compatibilidad completa. EmailVerified=true no ejecuta una verificacion de correo y es una decision pendiente de revisar.
+Se omiten campos administrados por Keycloak, como Id y CreatedTimestamp, y campos de credenciales heredados. En particular, config no debe enviarse como cadena vacia: el contrato de Keycloak espera un objeto multivaluado. Una prueba con HttpMessageHandler simulado comprueba el JSON y la extraccion del identificador de Location, sin crear usuarios reales. EmailVerified=true no ejecuta una verificacion de correo y es una decision pendiente de revisar.
 
 ### Registro y recorrido HTTP
 
@@ -29,7 +29,7 @@ Por cada solicitud administrativa el handler obtiene otro token: POST a TokenUrl
 
 AuthenticationService espera Location y obtiene el texto posterior a users/. Si falta Location lanza InvalidOperationException. No valida expresamente que exista el segmento ni elimina posibles componentes adicionales de la URL. Un 409 de duplicado u otro error remoto genera HttpRequestException en el handler, no un error de dominio especifico. Los HttpResponseMessage y algunos mensajes/contenidos temporales no se liberan explicitamente en el codigo actual; no confundir esto con la gestion del pool de HttpClientFactory.
 
-La [guia de API](../Bookify.Api/readme.md#registro-de-usuarios) contiene rutas, configuracion y requisitos del cliente administrativo. Las URLs actuales incluyen /auth, que debe alinearse con el despliegue; AdminUrl necesita la barra final. No copiar los secretos existentes del JSON a otros archivos: externalizarlos y rotarlos si se han expuesto.
+La [guia de API](../Bookify.Api/readme.md#registro-de-usuarios) contiene rutas, configuracion y requisitos del cliente administrativo. Las URLs actuales no incluyen /auth; AdminUrl conserva la barra final. Development usa localhost:18080 y Compose sobrescribe con bookify-idp:8080. No copiar los secretos existentes del JSON a otros archivos: externalizarlos y rotarlos si se han expuesto.
 
 ### Persistencia del identificador externo
 
@@ -55,7 +55,7 @@ Configure(string? name, JwtBearerOptions options) delega en Configure(options) s
 
 El manejador descarga metadatos OpenID Connect y obtiene las claves publicas anunciadas en jwks_uri. Comprueba firma, vigencia, audiencia y emisor conforme a las opciones y metadatos; el proyecto no desactiva expresamente esas validaciones. Decodificar un JWT no equivale a validarlo. La API no necesita la clave privada de Keycloak ni un secreto de cliente para verificar estas firmas asimetricas.
 
-**Configuracion pendiente de alinear:** el JSON de API usa ValidIssuer, pero AuthenticationOptions espera Issuer; no son alias. MetadataUrl apunta a bookify-idp:8080, adecuado para la red Docker pero no para el proceso local de Windows. La [guia JWT de API](../Bookify.Api/readme.md#autenticacion-jwt) explica las alternativas y limites. Se documenta el estado actual sin cambiar opciones ni codigo.
+La configuracion ya utiliza Issuer (no ValidIssuer). MetadataUrl apunta a localhost:18080 en Development y a bookify-idp:8080 mediante las variables de Compose. El emisor publico permanece estable y el backchannel dinamico de Keycloak permite acceder a JWKS desde ambas redes. La [guia JWT de API](../Bookify.Api/readme.md#autenticacion-jwt) explica las alternativas y limites.
 
 Usar HTTPS confiable y RequireHttpsMetadata=true en produccion. Asegurar acceso desde la API tanto al descubrimiento como a las claves, con el hostname/emisor coherente. Las opciones faltantes no se comprueban mediante ValidateOnStart y pueden fallar al autenticar una peticion.
 
