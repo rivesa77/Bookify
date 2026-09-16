@@ -25,6 +25,8 @@
                 .HasConversion(email => email.Value, value => new Email(value));
 
             builder.HasIndex(user => user.Email).IsUnique();
+
+            builder.HasIndex(user => user.Id).IsUnique();
         }
     }
 }
