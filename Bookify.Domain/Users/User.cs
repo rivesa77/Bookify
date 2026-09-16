@@ -6,6 +6,18 @@ namespace Bookify.Domain.Users
 
     public sealed class User : Entity
     {
+        private readonly List<Role> roles = [];
+
+        public FirstName FirstName { get; private set; }
+
+        public LastName LastName { get; private set; }
+
+        public Email Email { get; private set; }
+
+        public string Identity { get; private set; } = string.Empty;
+
+        public IReadOnlyCollection<Role> Roles => roles;
+
         private User()
         {
         }
@@ -21,14 +33,6 @@ namespace Bookify.Domain.Users
             Email = email;
         }
 
-        public FirstName FirstName { get; private set; }
-
-        public LastName LastName { get; private set; }
-
-        public Email Email { get; private set; }
-
-        public string Identity { get; private set; } = string.Empty;
-
         public static User Create(
             FirstName firstName,
             LastName lastName,
@@ -41,6 +45,8 @@ namespace Bookify.Domain.Users
                 email);
 
             user.RaiseDomainEvent(new UserCreatedDomainEvent(user.Id));
+
+            user.roles.Add(Role.Registered);
 
             return user;
         }

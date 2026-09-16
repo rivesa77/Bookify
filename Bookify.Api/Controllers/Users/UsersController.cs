@@ -1,6 +1,8 @@
 ﻿namespace Bookify.Api.Controllers.Users
 {
+    using Bookify.Api.Controllers.Constants;
     using Bookify.Application.Users.CreateUser;
+    using Bookify.Application.Users.GetLoggedInUser;
     using Bookify.Application.Users.LogInUser;
     using Bookify.Domain.Abstractions;
     using MediatR;
@@ -17,6 +19,17 @@
         public UsersController(ISender sender)
         {
             this.sender = sender;
+        }
+
+        [Authorize(Roles = RolesConstants.Registered)]
+        [HttpGet("LogInUser")]
+        public async Task<IActionResult> LogInUser(CancellationToken cancellationToken)
+        {
+            GetLoggedInUserQuery query = new();
+
+            Result<UserResponse> result = await sender.Send(query, cancellationToken);
+
+            return Ok(result.Value);
         }
 
         [AllowAnonymous]

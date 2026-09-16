@@ -8,5 +8,16 @@
             : base(applicationDbContext)
         {
         }
+
+        public override void Add(User user)
+        {
+            // Indicates that the role information is already in the database and does not need to be saved.
+            foreach (Role role in user.Roles)
+            {
+                applicationDbContext.Attach(role);
+            }
+
+            base.Add(user);
+        }
     }
 }
