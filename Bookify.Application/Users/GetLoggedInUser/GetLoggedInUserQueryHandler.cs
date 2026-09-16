@@ -34,7 +34,7 @@
                     last_name AS LastName,
                     email AS Email
                 FROM "Users"
-                WHERE identity_id = @IdentityId
+                WHERE identity = @IdentityId
             """;
 
             var user = await connection.QuerySingleAsync<UserResponse>(
