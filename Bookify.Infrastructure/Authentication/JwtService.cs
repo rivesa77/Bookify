@@ -4,6 +4,7 @@
     using Bookify.Application.Abstractions.Authentication;
     using Bookify.Domain.Abstractions;
     using Bookify.Infrastructure.Authentication.Models;
+    using Microsoft.Extensions.Options;
 
     public sealed class JwtService : IJwtService
     {
@@ -14,10 +15,10 @@
         private readonly HttpClient httpClient;
         private readonly KeycloakOptions keycloakOptions;
 
-        public JwtService(HttpClient httpClient, KeycloakOptions keycloakOptions)
+        public JwtService(HttpClient httpClient, IOptions<KeycloakOptions> keycloakOptions)
         {
             this.httpClient = httpClient;
-            this.keycloakOptions = keycloakOptions;
+            this.keycloakOptions = keycloakOptions.Value;
         }
 
         public async Task<Result<string>> GetAccessTokenAsync(
