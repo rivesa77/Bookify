@@ -27,6 +27,8 @@ namespace Bookify.Domain.Users
 
         public Email Email { get; private set; }
 
+        public string Identity { get; private set; } = string.Empty;
+
         public static User Create(
             FirstName firstName,
             LastName lastName,
@@ -41,6 +43,11 @@ namespace Bookify.Domain.Users
             user.RaiseDomainEvent(new UserCreatedDomainEvent(user.Id));
 
             return user;
+        }
+
+        public void SetIdentityId(string identityId)
+        {
+            Identity = identityId;
         }
     }
 }
