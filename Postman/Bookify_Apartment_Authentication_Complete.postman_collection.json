@@ -1,0 +1,316 @@
+{
+  "info": {
+    "_postman_id": "d20933d4-eac4-4176-afe4-525f04b682b3",
+    "name": "Bookify",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "23378263"
+  },
+  "item": [
+    {
+      "name": "APARTMENT",
+      "item": [
+        {
+          "name": "SEARCH",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJ3aEZMbmNMelE0WEtLY2FSVmlHbnhLR0xOb2d0Y2ZWX2g1amNqXzNkcFFvIn0.eyJleHAiOjE3ODk1NjEyNTcsImlhdCI6MTc4OTU1NzY1NywianRpIjoib25ydHJvOjM4MzdlY2MwLTg5MzItOGUyOS0yYzZiLTA3OTVmNWM4YTkwYSIsImlzcyI6Imh0dHA6Ly9sb2NhbGhvc3Q6MTgwODAvcmVhbG1zL2Jvb2tpZnkiLCJhdWQiOiJhY2NvdW50Iiwic3ViIjoiYTBmZTFmODAtY2E1My00ODU3LTk0YWEtYWUxZGFjZjFiMzU4IiwidHlwIjoiQmVhcmVyIiwiYXpwIjoiYm9va2lmeS1hdXRoLWNsaWVudCIsInNpZCI6IlpGNkZIM2tGVUNBSzEtMVRoV0F6NW5oXyIsImFjciI6IjEiLCJyZWFsbV9hY2Nlc3MiOnsicm9sZXMiOlsib2ZmbGluZV9hY2Nlc3MiLCJ1bWFfYXV0aG9yaXphdGlvbiIsImRlZmF1bHQtcm9sZXMtYm9va2lmeSJdfSwicmVzb3VyY2VfYWNjZXNzIjp7ImFjY291bnQiOnsicm9sZXMiOlsibWFuYWdlLWFjY291bnQiLCJtYW5hZ2UtYWNjb3VudC1saW5rcyIsInZpZXctcHJvZmlsZSJdfX0sInNjb3BlIjoib3BlbmlkIGVtYWlsIHByb2ZpbGUiLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwibmFtZSI6IlJpY2FyZG8gVmVsYSBTYWxhcyIsInByZWZlcnJlZF91c2VybmFtZSI6InJpdmVzYTc3QGhvdG1haWwuY29tIiwiZ2l2ZW5fbmFtZSI6IlJpY2FyZG8iLCJmYW1pbHlfbmFtZSI6IlZlbGEgU2FsYXMiLCJlbWFpbCI6InJpdmVzYTc3QGhvdG1haWwuY29tIn0.lZM6N8huRL0IE30UNKz4IcW-BmXngNvExzmecEmfC8NyaDi-92cUA0aYmxbVVuaBbTPyoZy8ycwy4LUARGMyJldKe-b4MqUtRXlG2X-8SfThm3YfIBDsUWjxYoG507yxTMsoFHp3PnJyaxOUEOpzxTBoYbp9VSZBAawG09M66IUpqvkLH8LBRXAp-n_hZ1LYZRORnjUpQgqQmQ2pd6LBRagilQUV7aG15EhpnLny8dUJa5S9VL4SxOO_N2--NI4ZmmM0lO46NotCpEqBq-9x86jQxQuW2q39uENDbgcKAlz2h621V2w0dIfleouzLrXEKvjlobTgTlhy6743JZIiqg",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BookifyUrl}}/api/apartments?startDate=07-22-2023&endDate=07-23-2023",
+              "host": [
+                "{{BookifyUrl}}"
+              ],
+              "path": [
+                "api",
+                "apartments"
+              ],
+              "query": [
+                {
+                  "key": "startDate",
+                  "value": "07-22-2023"
+                },
+                {
+                  "key": "endDate",
+                  "value": "07-23-2023"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "CREATE",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"name\": \"Nombre\",\r\n  \"description\": \"Descripcion\",\r\n  \"country\": \"España\",\r\n  \"state\": \"Andalucia\",\r\n  \"zipCode\": \"04007\",\r\n  \"city\": \"Almeria\",\r\n  \"street\": \"Calle Galicia 6\",\r\n  \"priceAmount\": 100.5,\r\n  \"cleaningFeeAmount\": 75,\r\n  \"currency\": \"EUR2\",\r\n  \"amenities\": [\r\n    1,2\r\n  ]\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BookifyUrl}}/api/apartments",
+              "host": [
+                "{{BookifyUrl}}"
+              ],
+              "path": [
+                "api",
+                "apartments"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "BOOKING",
+      "item": [
+        {
+          "name": "GET BOOKING",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BookifyUrl}}/api/bookings/e24c7948-24eb-4d22-9ae3-466cc697ff0e",
+              "host": [
+                "{{BookifyUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "e24c7948-24eb-4d22-9ae3-466cc697ff0e"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "IDENTITY",
+      "item": [
+        {
+          "name": "Access Token",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "client_id",
+                  "value": "bookify-auth-client",
+                  "type": "text",
+                  "uuid": "690804c7-cb33-42aa-86a7-6422ff99ca1e"
+                },
+                {
+                  "key": "grant_type",
+                  "value": "password",
+                  "type": "text",
+                  "uuid": "7c77b6f2-0f00-4eb8-b1c7-4c87b6e40993"
+                },
+                {
+                  "key": "client_secret",
+                  "value": "3E3yvXaYppoYBF3Ir6DgtEzADKKzSurZ",
+                  "type": "text",
+                  "uuid": "2f69cd3a-e3b0-4ca3-b756-25e483b331c9"
+                },
+                {
+                  "key": "scope",
+                  "value": "openid",
+                  "type": "text",
+                  "uuid": "34426893-1d77-452e-885a-e60f5e96f0f7"
+                },
+                {
+                  "key": "username",
+                  "value": "rivesa77@hotmail.com",
+                  "type": "text",
+                  "uuid": "b7e4c248-bd51-4d48-bd87-44602181fd6c"
+                },
+                {
+                  "key": "password",
+                  "value": "12345",
+                  "type": "text",
+                  "uuid": "db52cced-38e1-41a1-96cd-5559322ece2f"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://localhost:18080/realms/bookify/protocol/openid-connect/token",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "18080",
+              "path": [
+                "realms",
+                "bookify",
+                "protocol",
+                "openid-connect",
+                "token"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Access Token Admin",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "client_id",
+                  "value": "bookify-admin-client",
+                  "type": "text",
+                  "uuid": "690804c7-cb33-42aa-86a7-6422ff99ca1e"
+                },
+                {
+                  "key": "grant_type",
+                  "value": "client_credentials",
+                  "type": "text",
+                  "uuid": "7c77b6f2-0f00-4eb8-b1c7-4c87b6e40993"
+                },
+                {
+                  "key": "client_secret",
+                  "value": "UZDmbNxWmV4TlpaCRcju6pMRsyuV3er1",
+                  "type": "text",
+                  "uuid": "2f69cd3a-e3b0-4ca3-b756-25e483b331c9"
+                },
+                {
+                  "key": "scope",
+                  "value": "openid",
+                  "type": "text",
+                  "uuid": "34426893-1d77-452e-885a-e60f5e96f0f7"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://localhost:18080/realms/bookify/protocol/openid-connect/token",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "18080",
+              "path": [
+                "realms",
+                "bookify",
+                "protocol",
+                "openid-connect",
+                "token"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "USER",
+      "item": [
+        {
+          "name": "Register User",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"firstName\":\"Ricardo\",\r\n    \"lastName\":\"Vela Salas\",\r\n    \"email\":\"rivesa77@hotmail.com\",\r\n    \"password\":\"12345\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BookifyUrl}}/api/users/register",
+              "host": [
+                "{{BookifyUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "register"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"email\":\"rivesa77@hotmail.com\",\r\n    \"password\":\"12345\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BookifyUrl}}/api/users/login",
+              "host": [
+                "{{BookifyUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "login"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "BookifyUrl",
+      "value": ""
+    }
+  ]
+}
