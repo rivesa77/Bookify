@@ -4,6 +4,10 @@ services:
     container_name: Bookify.Api
     environment:
       - ConnectionStrings__Database=Host=bookify-db;Port=5432;Database=bookify;Username=postgres;Password=postgres;
+      - Authentication__Issuer=http://localhost:18080/realms/bookify
+      - Authentication__MetadataUrl=http://bookify-idp:8080/realms/bookify/.well-known/openid-configuration
+      - Keycloak__AdminUrl=http://bookify-idp:8080/admin/realms/bookify/
+      - Keycloak__TokenUrl=http://bookify-idp:8080/realms/bookify/protocol/openid-connect/token
     build:
       context: .
       dockerfile: Bookify.Api/Dockerfile
@@ -98,6 +102,9 @@ services:
     environment:
       - KC_BOOTSTRAP_ADMIN_USERNAME=admin
       - KC_BOOTSTRAP_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      # Emisor publico estable; metadatos/claves accesibles tambien por la red interna.
+      - KC_HOSTNAME=http://localhost:18080
+      - KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true
     volumes:
       - ./.containers/identity:/opt/keycloak/data
       # El origen debe ser un archivo JSON y el destino no debe ser una carpeta.
