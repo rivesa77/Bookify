@@ -46,7 +46,7 @@
                 WHERE NOT EXISTS
                 (
                     SELECT 1
-                    FROM "Bookings" AS b
+                    FROM bookings AS b
                     WHERE
                         b.apartment_id = a.id AND
                         b.duration_start <= @EndDate AND
