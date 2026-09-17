@@ -20,5 +20,12 @@
                 .User
                 .GetIdentityId() ??
             throw new ApplicationException("User context is unavailable");
+
+        public Guid UserId =>
+            httpContextAccessor
+                .HttpContext?
+                .User
+                .GetUserId() ??
+            throw new ApplicationException("User context is unavailable");
     }
 }
