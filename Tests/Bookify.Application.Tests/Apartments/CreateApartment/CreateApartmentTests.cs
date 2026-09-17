@@ -5,7 +5,6 @@ namespace Bookify.Application.Tests.Apartments.CreateApartment
     using Bookify.Domain.Apartments;
     using Bookify.Domain.Commons;
     using Bookify.TestUtilities.Constants;
-    using Bookify.TestUtilities.Context;
     using FluentAssertions;
     using Microsoft.VisualStudio.TestTools.UnitTesting;
     using Moq;
@@ -14,6 +13,61 @@ namespace Bookify.Application.Tests.Apartments.CreateApartment
     [TestCategory("Application")]
     public sealed class CreateApartmentTests
     {
+        private readonly Bookify.TestUtilities.Context.ApartmentTestContext context = new();
+
+        [TestCleanup]
+        public void Cleanup()
+        {
+            context.Dispose();
+        }
+
+        [TestMethod]
+        [DataRow("")]
+        [DataRow(" ")]
+        [DataRow(null)]
+        public async Task Handle_InvalidNameWithoutPipeline_Should_ReturnDomainError(string? name)
+        {
+            // Arrange
+            CreateApartmentCommandHandler handler = new(context.Apartments.Object, context.UnitOfWork.Object);
+
+            // Act
+
+            Result<Guid> result = await handler.Handle(ValidCommand() with { Name = name! }, default);
+
+            // Assert
+
+            result.IsFailure.Should().BeTrue();
+
+            result.Error.Should().Be(NameErrors.Empty);
+
+            context.Apartments.VerifyNoOtherCalls();
+
+            context.UnitOfWork.VerifyNoOtherCalls();
+        }
+
+        [TestMethod]
+        public async Task Send_Should_CopyAmenitiesInsteadOfSharingCommandList()
+        {
+            // Arrange
+            CreateApartmentCommand command = ValidCommand() with { Amenities = [Amenity.Wifi] };
+
+            Apartment? created = null;
+
+            context.Apartments.Setup(r => r.Add(It.IsAny<Apartment>())).Callback<Apartment>(a => created = a);
+
+            context.UnitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+
+            // Act
+
+            await context.Sender.Send(command);
+
+            command.Amenities.Clear();
+
+            // Assert
+
+            created!.Amenities.Should().Equal(Amenity.Wifi);
+        }
+
         private static CreateApartmentCommand ValidCommand() => new(
             ApartmentConstants.Name,
             ApartmentConstants.Description,
@@ -47,11 +101,9 @@ namespace Bookify.Application.Tests.Apartments.CreateApartment
                 new Money(ApartmentConstants.CleaningFeeAmount, Currency.Eur),
                 ApartmentConstants.Amenities);
 
-            using ApartmentTestContext apartmentTestContext = new();
+            Mock<IApartmentRepository> repository = context.Apartments;
 
-            Mock<IApartmentRepository> repository = apartmentTestContext.Apartments;
-
-            Mock<IUnitOfWork> unitOfWork = apartmentTestContext.UnitOfWork;
+            Mock<IUnitOfWork> unitOfWork = context.UnitOfWork;
 
             using CancellationTokenSource cancellation = new();
 
@@ -70,9 +122,11 @@ namespace Bookify.Application.Tests.Apartments.CreateApartment
             CreateApartmentCommand command = ValidCommand();
 
             // Act
-            Result<Guid> result = await apartmentTestContext.Sender.Send(command, cancellation.Token);
+
+            Result<Guid> result = await context.Sender.Send(command, cancellation.Token);
 
             // Assert
+
             result.IsSuccess
                 .Should()
                 .BeTrue();
@@ -94,9 +148,11 @@ namespace Bookify.Application.Tests.Apartments.CreateApartment
                 .BeEquivalentTo(apartmentResult, options => options.Excluding(a => a.Id));
 
             repository.VerifyAll();
+
             unitOfWork.VerifyAll();
 
             repository.VerifyNoOtherCalls();
+
             unitOfWork.VerifyNoOtherCalls();
         }
 
@@ -128,21 +184,22 @@ namespace Bookify.Application.Tests.Apartments.CreateApartment
                 _ => valid with { Amenities = null! }
             };
 
-            using ApartmentTestContext apartmentTestContext = new();
+            Mock<IApartmentRepository> repository = context.Apartments;
 
-            Mock<IApartmentRepository> repository = apartmentTestContext.Apartments;
-
-            Mock<IUnitOfWork> unitOfWork = apartmentTestContext.UnitOfWork;
+            Mock<IUnitOfWork> unitOfWork = context.UnitOfWork;
 
             // Act
-            Func<Task> act = () => apartmentTestContext.Sender.Send(command, default);
+
+            Func<Task> act = () => context.Sender.Send(command, default);
 
             // Assert
+
             await act
                 .Should()
                 .ThrowAsync<Exceptions.ValidationException>();
 
             repository.VerifyNoOtherCalls();
+
             unitOfWork.VerifyNoOtherCalls();
         }
 
@@ -153,11 +210,14 @@ namespace Bookify.Application.Tests.Apartments.CreateApartment
             CreateApartmentCommand command = ValidCommand() with
             {
                 CleaningFeeAmount = 0,
+
                 Currency = "USD",
+
                 Amenities = []
             };
 
             // Assert
+
             new CreateApartmentCommandValidator()
                 .Validate(command).IsValid
                 .Should()
@@ -168,18 +228,19 @@ namespace Bookify.Application.Tests.Apartments.CreateApartment
         public async Task Send_SaveFailure_Should_Propagate()
         {
             // Arrange
-            using ApartmentTestContext apartmentTestContext = new();
 
-            apartmentTestContext.Apartments.Setup(r => r.Add(It.IsAny<Apartment>()));
+            context.Apartments.Setup(r => r.Add(It.IsAny<Apartment>()));
 
-            apartmentTestContext.UnitOfWork.Setup(
-                u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            context.UnitOfWork.Setup(
+            u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
                 .ThrowsAsync(new InvalidOperationException("Database unavailable"));
 
             // Act
-            Func<Task> act = () => apartmentTestContext.Sender.Send(ValidCommand(), default);
+
+            Func<Task> act = () => context.Sender.Send(ValidCommand(), default);
 
             // Assert
+
             await act
                 .Should()
                 .ThrowAsync<InvalidOperationException>();
