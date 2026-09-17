@@ -10,6 +10,6 @@
 
         public static readonly Error InvalidLength = new(
             "Name.InvalidLength",
-            "The length max 75.");
+            "The length max 200.");
     }
 }
