@@ -27,15 +27,13 @@
                 return await next(cancellationToken);
             }
 
-            ValidationContext<TRequest> context = new(request);
-
             IEnumerable<ValidationError> validatorErrors = [.. validators
-                .Select(validator => validator.Validate(context))
-                .Where(validatorResult => validatorResult.Errors.Count>0)
-                .SelectMany(validatorResult => validatorResult.Errors)
-                .Select(validationFailure => new ValidationError(
-                    validationFailure.PropertyName,
-                    validationFailure.ErrorMessage))];
+            .Select(validator => validator.Validate(
+                new ValidationContext<TRequest>(request)))
+            .SelectMany(validatorResult => validatorResult.Errors)
+            .Select(validationFailure => new ValidationError(
+                validationFailure.PropertyName,
+                validationFailure.ErrorMessage))];
 
             if (validatorErrors.Any())
             {
