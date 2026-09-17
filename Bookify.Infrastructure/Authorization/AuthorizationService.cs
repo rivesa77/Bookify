@@ -15,7 +15,7 @@
         public async Task<UserRolesResponse> GetRolesForUserAsync(string identifyId)
         {
             UserRolesResponse userRolesResponse = await applicationDbContext.Set<User>()
-                .Where(user => user.Identity == identifyId)
+                .Where(user => user.IdentityId == identifyId)
                 .Select(user => new UserRolesResponse
                 {
                     Id = user.Id,

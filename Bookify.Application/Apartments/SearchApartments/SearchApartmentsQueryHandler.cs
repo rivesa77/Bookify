@@ -42,7 +42,7 @@
                     a.address_zip_code AS ZipCode,
                     a.address_city AS City,
                     a.address_street AS Street
-                FROM "Apartments" AS a
+                FROM apartments AS a
                 WHERE NOT EXISTS
                 (
                     SELECT 1

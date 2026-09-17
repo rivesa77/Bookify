@@ -14,7 +14,7 @@ namespace Bookify.Domain.Users
 
         public Email Email { get; private set; }
 
-        public string Identity { get; private set; } = string.Empty;
+        public string IdentityId { get; private set; } = string.Empty;
 
         public IReadOnlyCollection<Role> Roles => roles;
 
@@ -53,7 +53,7 @@ namespace Bookify.Domain.Users
 
         public void SetIdentityId(string identityId)
         {
-            Identity = identityId;
+            IdentityId = identityId;
         }
     }
 }

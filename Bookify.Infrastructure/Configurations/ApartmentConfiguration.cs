@@ -9,7 +9,7 @@
     {
         public void Configure(EntityTypeBuilder<Apartment> builder)
         {
-            builder.ToTable("Apartments");
+            builder.ToTable("apartments");
 
             builder.HasKey(apartment => apartment.Id);
 

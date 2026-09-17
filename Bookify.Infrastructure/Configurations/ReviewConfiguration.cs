@@ -11,7 +11,7 @@
     {
         public void Configure(EntityTypeBuilder<Review> builder)
         {
-            builder.ToTable("Reviews");
+            builder.ToTable("reviews");
 
             builder.HasKey(review => review.Id);
 

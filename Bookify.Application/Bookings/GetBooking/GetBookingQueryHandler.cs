@@ -36,7 +36,7 @@
                     duration_start AS DurationStart,
                     duration_end AS DurationEnd,
                     created_on_utc AS CreatedOnUtc
-                FROM "Bookings"
+                FROM bookings
                 WHERE id = @BookingId
                 """;
 

@@ -33,8 +33,8 @@
                     first_name AS FirstName,
                     last_name AS LastName,
                     email AS Email
-                FROM "Users"
-                WHERE identity = @IdentityId
+                FROM users
+                WHERE identity_id = @IdentityId
             """;
 
             var user = await connection.QuerySingleAsync<UserResponse>(

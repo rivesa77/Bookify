@@ -20,11 +20,11 @@ namespace Bookify.Api.Extensions
 
             // Serialize startup seeding so concurrent instances cannot both insert.
             connection.Execute(
-                """LOCK TABLE public."Apartments" IN SHARE ROW EXCLUSIVE MODE""",
+                """LOCK TABLE public.apartments IN SHARE ROW EXCLUSIVE MODE""",
                 transaction: transaction);
 
             bool hasApartments = connection.ExecuteScalar<bool>(
-                """SELECT EXISTS (SELECT 1 FROM public."Apartments")""",
+                """SELECT EXISTS (SELECT 1 FROM public.apartments)""",
                 transaction: transaction);
 
             if (hasApartments)
@@ -59,7 +59,7 @@ namespace Bookify.Api.Extensions
             }
 
             const string sql = """
-                INSERT INTO public."Apartments" (
+                INSERT INTO public.apartments (
                     id,
                     "name",
                     description,

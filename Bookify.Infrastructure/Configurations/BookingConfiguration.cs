@@ -11,7 +11,7 @@
     {
         public void Configure(EntityTypeBuilder<Booking> builder)
         {
-            builder.ToTable("Bookings");
+            builder.ToTable("bookings");
 
             builder.HasKey(booking => booking.Id);
 
