@@ -5,6 +5,7 @@
     using Bookify.Application.Users.GetLoggedInUser;
     using Bookify.Application.Users.LogInUser;
     using Bookify.Domain.Abstractions;
+    using Bookify.Infrastructure.Authorization;
     using MediatR;
     using Microsoft.AspNetCore.Authorization;
     using Microsoft.AspNetCore.Mvc;
@@ -22,6 +23,7 @@
         }
 
         [Authorize(Roles = RolesConstants.Registered)]
+        [HasPermission(PermissionsConstants.UsersRead)]
         [HttpGet("LogInUser")]
         public async Task<IActionResult> LogInUser(CancellationToken cancellationToken)
         {

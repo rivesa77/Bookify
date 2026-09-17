@@ -18,6 +18,7 @@ namespace Bookify.Infrastructure
     using Dapper;
     using Microsoft.AspNetCore.Authentication;
     using Microsoft.AspNetCore.Authentication.JwtBearer;
+    using Microsoft.AspNetCore.Authorization;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.DependencyInjection;
@@ -75,6 +76,17 @@ namespace Bookify.Infrastructure
             services.AddScoped<IUserContext, UserContext>();
         }
 
+        private static void AddAuthorization(IServiceCollection services, IConfiguration configuration)
+        {
+            services
+                .AddScoped<AuthorizationService>();
+
+            services
+                .AddTransient<IClaimsTransformation, CustomClaimsTransformation>()
+                .AddTransient<IAuthorizationHandler, PermissionAuthorizationHandler>()
+                .AddTransient<IAuthorizationPolicyProvider, PermissionAuthorizationPolicyProvider>();
+        }
+
         private static void AddPersistence(IServiceCollection services, IConfiguration configuration)
         {
             services
@@ -103,15 +115,6 @@ namespace Bookify.Infrastructure
 
             SqlMapper
                 .AddTypeHandler(new DateOnlyTypeHandler());
-        }
-
-        private static void AddAuthorization(IServiceCollection services, IConfiguration configuration)
-        {
-            services
-                .AddScoped<AuthorizationService>();
-
-            services
-                .AddTransient<IClaimsTransformation, CustomClaimsTransformation>();
         }
     }
 }

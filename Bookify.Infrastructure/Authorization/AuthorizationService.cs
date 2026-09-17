@@ -24,5 +24,15 @@
 
             return userRolesResponse;
         }
+
+        public async Task<HashSet<string>> GetPermissionsForUserAsync(string identityId)
+        {
+            ICollection<Permission> permissions = await applicationDbContext.Set<User>()
+                .Where(user => user.IdentityId == identityId)
+                .SelectMany(users => users.Roles.Select(role => role.Permissions))
+                .FirstAsync();
+
+            return [.. permissions.Select(p => p.Name)];
+        }
     }
 }
