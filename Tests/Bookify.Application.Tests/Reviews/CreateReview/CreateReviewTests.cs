@@ -114,13 +114,9 @@ namespace Bookify.Application.Tests.Reviews.CreateReview
             Booking booking = Booking.Reserve(
                 apartment,
                 Guid.NewGuid(),
-                DateRange.Create(new DateOnly(
-                    2026,
-                    10,
-                    1), new DateOnly(
-                    2026,
-                    10,
-                    5)),
+                DateRange.Create(
+                    new DateOnly(2026, 10, 1),
+                    new DateOnly(2026, 10, 5)),
                 UtcNow,
                 new PricingServices());
 

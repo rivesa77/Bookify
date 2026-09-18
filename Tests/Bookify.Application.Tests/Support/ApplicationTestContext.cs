@@ -87,13 +87,9 @@ namespace Bookify.Application.Tests.Support
         public static Booking CreateBooking(Guid userId) => Booking.Reserve(
             CreateApartment(),
             userId,
-            DateRange.Create(new DateOnly(
-                2026,
-                10,
-                1), new DateOnly(
-                2026,
-                10,
-                5)),
+            DateRange.Create(
+                new DateOnly(2026, 10, 1),
+                new DateOnly(2026, 10, 5)),
             UtcNow,
             new PricingServices());
     }

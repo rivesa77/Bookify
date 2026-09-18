@@ -10,10 +10,7 @@ namespace Bookify.Application.Tests.Apartments
     [TestCategory("Application")]
     public sealed class SearchApartmentsTests
     {
-        private static readonly DateOnly StartDate = new(
-            2026,
-            10,
-            1);
+        private static readonly DateOnly StartDate = new(2026, 10, 1);
 
         private static readonly DateOnly EndDate = StartDate.AddDays(4);
 

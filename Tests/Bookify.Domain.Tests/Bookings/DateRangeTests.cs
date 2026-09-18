@@ -51,15 +51,8 @@ namespace Bookify.Domain.Tests.Bookings
         public void LengthInDays_Should_IncludeLeapDay()
         {
             // Arrange
-            DateOnly start = new(
-                2024,
-                2,
-                28);
-
-            DateOnly end = new(
-                2024,
-                3,
-                1);
+            DateOnly start = new(2024, 2, 28);
+            DateOnly end = new(2024, 3, 1);
 
             // Act
             DateRange range = DateRange.Create(start, end);

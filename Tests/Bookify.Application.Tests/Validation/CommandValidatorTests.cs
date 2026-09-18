@@ -21,10 +21,7 @@ namespace Bookify.Application.Tests.Validation
 
         private const string Password = "12345";
 
-        private static readonly DateOnly StartDate = new(
-            2026,
-            10,
-            1);
+        private static readonly DateOnly StartDate = new(2026, 10, 1);
 
         private static CreateUserCommand ValidUserCommand() => new(
             FirstName,
