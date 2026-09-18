@@ -30,21 +30,15 @@ namespace Bookify.Application.Tests.Bookings
         private static ReserveBookingCommand Command(Guid userId, Guid apartmentId) => new(
             apartmentId,
             userId,
-            new DateOnly(
-                2026,
-                10,
-                1),
-            new DateOnly(
-                2026,
-                10,
-                5));
+            new DateOnly(2026, 10, 1),
+            new DateOnly(2026, 10, 5));
 
         [TestMethod]
         public async Task Send_Should_ReserveWithCalculatedPriceAndSaveOnce()
         {
             // Arrange
 
-            using CancellationTokenSource cancellation = new CancellationTokenSource();
+            using CancellationTokenSource cancellation = new();
 
             ReserveBookingCommand command = Command(user.Id, apartment.Id);
 

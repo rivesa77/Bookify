@@ -7,19 +7,9 @@ namespace Bookify.Domain.Tests.Support
 
     internal static class DomainTestData
     {
-        internal static readonly DateTime UtcNow = new(
-            2026,
-            9,
-            1,
-            12,
-            0,
-            0,
-            DateTimeKind.Utc);
+        internal static readonly DateTime UtcNow = new(2026, 9, 1, 12, 0, 0, DateTimeKind.Utc);
 
-        internal static readonly DateOnly StartDate = new(
-            2026,
-            10,
-            1);
+        internal static readonly DateOnly StartDate = new(2026, 10, 1);
 
         internal static readonly Guid UserId = Guid.Parse("10000000-0000-0000-0000-000000000001");
 

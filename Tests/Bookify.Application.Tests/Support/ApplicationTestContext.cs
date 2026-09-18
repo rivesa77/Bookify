@@ -15,14 +15,7 @@ namespace Bookify.Application.Tests.Support
 
     internal sealed class ApplicationTestContext : ContextTestsBase
     {
-        public static readonly DateTime UtcNow = new(
-            2026,
-            9,
-            14,
-            12,
-            0,
-            0,
-            DateTimeKind.Utc);
+        public static readonly DateTime UtcNow = new(2026, 9, 14, 12, 0, 0, DateTimeKind.Utc);
 
         public Mock<IUserRepository> Users { get; } = new(MockBehavior.Strict);
 

@@ -8,7 +8,6 @@ namespace Bookify.Application.Tests.Reviews.CreateReview
     using Bookify.Domain.Reviews;
     using Bookify.Domain.Reviews.Events;
     using Bookify.TestUtilities.Constants;
-    using Bookify.TestUtilities.Context;
     using FluentAssertions;
     using Microsoft.VisualStudio.TestTools.UnitTesting;
     using Moq;
@@ -27,14 +26,7 @@ namespace Bookify.Application.Tests.Reviews.CreateReview
             context.Dispose();
         }
 
-        private static readonly DateTime UtcNow = new(
-            2026,
-            9,
-            14,
-            12,
-            0,
-            0,
-            DateTimeKind.Utc);
+        private static readonly DateTime UtcNow = new(2026, 9, 14, 12, 0, 0, DateTimeKind.Utc);
 
         [TestMethod]
         public async Task Send_MissingBooking_Should_ReturnNotFoundWithoutWriting()
@@ -69,13 +61,13 @@ namespace Bookify.Application.Tests.Reviews.CreateReview
         public async Task Handle_InvalidRatingWithoutPipeline_Should_ReturnDomainError(int rating)
         {
             // Arrange
-            using Support.ApplicationTestContext context = new Support.ApplicationTestContext();
+            using Support.ApplicationTestContext context = new();
 
             Booking booking = CreateBooking(BookingStatus.Completed);
 
             context.Bookings.Setup(r => r.GetByIdAsync(booking.Id, It.IsAny<CancellationToken>())).ReturnsAsync(booking);
 
-            CreateReviewCommandHandler handler = new CreateReviewCommandHandler(
+            CreateReviewCommandHandler handler = new(
                 context.Bookings.Object,
                 context.Reviews.Object,
                 context.UnitOfWork.Object,

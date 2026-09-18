@@ -50,14 +50,8 @@ namespace Bookify.Application.Tests.Bookings
                     "EUR",
                     420m,
                     "EUR",
-                    new DateTime(
-                        2026,
-                        10,
-                        1),
-                    new DateTime(
-                        2026,
-                        10,
-                        5),
+                    new DateTime(2026, 10, 1),
+                    new DateTime(2026, 10, 5),
                     ApplicationTestContext.UtcNow);
 
                 context.UserContext.SetupGet(u => u.UserId).Returns(scenario == "owner" ? userId : Guid.NewGuid());
