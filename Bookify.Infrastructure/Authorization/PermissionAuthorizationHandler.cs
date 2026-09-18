@@ -30,7 +30,7 @@
 
             HashSet<string> permissions = await authorizationService.GetPermissionsForUserAsync(identityId);
 
-            if (permissions.Count > 0)
+            if (permissions.Contains(requirement.Permission))
             {
                 context.Succeed(requirement);
             }
