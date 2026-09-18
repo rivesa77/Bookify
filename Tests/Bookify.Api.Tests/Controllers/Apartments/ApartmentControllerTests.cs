@@ -39,6 +39,8 @@ namespace Bookify.Api.Tests.Controllers.Apartments
 
             using ApartmentTestContext apartmentTestContext = new();
 
+            Apartment? persisted = null;
+
             apartmentTestContext.Apartments
             .Setup(r => r.Add(It.Is<Apartment>(a =>
                 a.Name == apartment.Name &&
@@ -47,6 +49,7 @@ namespace Bookify.Api.Tests.Controllers.Apartments
                 a.Price == apartment.Price &&
                 a.CleaningFeeAmount == apartment.CleaningFeeAmount &&
                 a.Amenities.SequenceEqual(apartment.Amenities))))
+                .Callback<Apartment>(saved => persisted = saved)
                 .Verifiable(Times.Once);
 
             apartmentTestContext.UnitOfWork
@@ -89,10 +92,14 @@ namespace Bookify.Api.Tests.Controllers.Apartments
                 .Should()
                 .NotBeEmpty();
 
+            response.Value.Should().Be(persisted!.Id);
+
             apartmentTestContext.Apartments.VerifyAll();
+
             apartmentTestContext.UnitOfWork.VerifyAll();
 
             apartmentTestContext.Apartments.VerifyNoOtherCalls();
+
             apartmentTestContext.UnitOfWork.VerifyNoOtherCalls();
         }
 
@@ -125,6 +132,7 @@ namespace Bookify.Api.Tests.Controllers.Apartments
             ];
 
             DateOnly startDate = new(2026, 1, 1);
+
             DateOnly endDate = new(2026, 1, 10);
 
             SearchApartmentsQuery searchApartmentsQuery = new(startDate, endDate);
@@ -162,6 +170,7 @@ namespace Bookify.Api.Tests.Controllers.Apartments
                 .BeEquivalentTo(apartments);
 
             sender.VerifyAll();
+
             sender.VerifyNoOtherCalls();
         }
     }

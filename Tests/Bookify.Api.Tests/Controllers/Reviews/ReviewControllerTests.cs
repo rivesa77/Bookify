@@ -17,13 +17,28 @@
     {
         private static readonly DateTime UtcNow = new(2026, 9, 14, 12, 0, 0, DateTimeKind.Utc);
 
+        private readonly ReviewTestContext reviewTestContext = new();
+
+        [TestCleanup]
+        public void Cleanup() => reviewTestContext.Dispose();
+
+        private static CreateReviewRequest Request(Guid bookingId) => new(
+            bookingId,
+            4,
+            "Good stay");
+
         private static Booking CreateBooking(BookingStatus status)
         {
             Apartment apartment = new(
                 Guid.NewGuid(),
                 Name.Create(new string('A', Name.ExactLength)).Value,
                 new Description("Description"),
-                new Address("Spain", "Madrid", "28001", "Madrid", "Street"),
+                new Address(
+                    "Spain",
+                    "Madrid",
+                    "28001",
+                    "Madrid",
+                    "Street"),
                 new Money(100, Currency.Eur),
                 Money.Zero(Currency.Eur),
                 []);
@@ -31,8 +46,11 @@
             Booking booking = Booking.Reserve(
                 apartment,
                 Guid.NewGuid(),
-                DateRange.Create(new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 5)),
-                UtcNow, new PricingServices());
+                DateRange.Create(
+                    new DateOnly(2026, 10, 1),
+                    new DateOnly(2026, 10, 5)),
+                UtcNow,
+                new PricingServices());
 
             if (status == BookingStatus.Rejected)
             {
@@ -67,8 +85,6 @@
         public async Task Controller_MissingBooking_Should_Return404WithoutSaving()
         {
             // Arrange
-            using ReviewTestContext reviewTestContext = new();
-
             Guid bookingId = Guid.NewGuid();
 
             reviewTestContext.Bookings
@@ -79,7 +95,7 @@
 
             // Act
             IActionResult response = await controller.CreateReview(
-                new(bookingId, 4, "Good stay"),
+                Request(bookingId),
                 CancellationToken.None);
 
             // Assert
@@ -101,8 +117,6 @@
         public async Task Controller_Should_ReturnStatusForBookingState(BookingStatus status, int expectedStatus)
         {
             // Arrange
-            using ReviewTestContext reviewTestContext = new();
-
             Booking booking = CreateBooking(status);
 
             reviewTestContext.Bookings
@@ -122,7 +136,7 @@
 
             // Act
             IActionResult result = await controller.CreateReview(
-                new(booking.Id, 4, "Good stay"),
+                Request(booking.Id),
                 CancellationToken.None);
 
             // Assert
