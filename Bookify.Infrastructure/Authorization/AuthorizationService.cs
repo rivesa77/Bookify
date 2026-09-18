@@ -27,12 +27,15 @@
 
         public async Task<HashSet<string>> GetPermissionsForUserAsync(string identityId)
         {
-            ICollection<Permission> permissions = await applicationDbContext.Set<User>()
+            List<string> permissions = await applicationDbContext.Set<User>()
                 .Where(user => user.IdentityId == identityId)
-                .SelectMany(users => users.Roles.Select(role => role.Permissions))
-                .FirstAsync();
+                .SelectMany(user => user.Roles)
+                .SelectMany(role => role.Permissions)
+                .Select(permission => permission.Name)
+                .Distinct()
+                .ToListAsync();
 
-            return [.. permissions.Select(p => p.Name)];
+            return [.. permissions];
         }
     }
 }
