@@ -41,6 +41,8 @@ namespace Bookify.Infrastructure
 
             AddAuthorization(services, configuration);
 
+            AddHealthChecks(services, configuration);
+
             return services;
         }
 
@@ -115,6 +117,16 @@ namespace Bookify.Infrastructure
 
             SqlMapper
                 .AddTypeHandler(new DateOnlyTypeHandler());
+        }
+
+        private static void AddHealthChecks(IServiceCollection services, IConfiguration configuration)
+        {
+            services.AddHealthChecks()
+                .AddNpgSql(configuration.GetConnectionString("Database")!)
+                .AddUrlGroup(
+                    new Uri(configuration["KeyCloak:BaseUrl"]!),
+                    HttpMethod.Get,
+                    "keycloak");
         }
     }
 }
