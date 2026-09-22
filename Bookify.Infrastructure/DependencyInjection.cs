@@ -124,7 +124,7 @@ namespace Bookify.Infrastructure
             services.AddHealthChecks()
                 .AddNpgSql(configuration.GetConnectionString("Database")!)
                 .AddUrlGroup(
-                    new Uri(configuration["KeyCloak:BaseUrl"]!),
+                    new Uri(configuration["Keycloak:BaseUrl"]!),
                     HttpMethod.Get,
                     "keycloak");
         }

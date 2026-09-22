@@ -170,6 +170,7 @@ namespace Bookify.Infrastructure.Tests
                 ["Authentication:Issuer"] = Issuer,
                 ["Authentication:MetadataUrl"] = Issuer + "/.well-known/openid-configuration",
                 ["Authentication:RequireHttpsMetadata"] = "true",
+                ["Keycloak:BaseUrl"] = "https://identity.example",
                 ["Keycloak:AdminUrl"] = keycloak.AdminUrl,
                 ["Keycloak:TokenUrl"] = keycloak.TokenUrl,
                 ["Keycloak:AdminClientId"] = keycloak.AdminClientId,

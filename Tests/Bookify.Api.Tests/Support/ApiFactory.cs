@@ -55,6 +55,8 @@ namespace Bookify.Api.Tests.Support
 
                 ["Authentication:MetadataUrl"] = "https://identity.example/realms/tests/.well-known/openid-configuration",
 
+                ["Keycloak:BaseUrl"] = "https://identity.example",
+
                 ["Keycloak:AdminUrl"] = "https://identity.example/admin/realms/tests/",
 
                 ["Keycloak:TokenUrl"] = "https://identity.example/realms/tests/protocol/openid-connect/token"
