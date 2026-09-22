@@ -2,7 +2,7 @@
 
 Este proyecto contiene la capa de infraestructura de Bookify. Su responsabilidad es implementar detalles tecnicos que las capas internas necesitan, pero no deben conocer directamente.
 
-Aqui viven las implementaciones concretas de persistencia, acceso SQL, fecha/hora del sistema y envio de email.
+Aqui viven las implementaciones de persistencia, acceso SQL, reloj, correo, autenticacion, autorizacion y comprobaciones de salud. Revision: 22 de septiembre de 2026.
 
 [Guia de la solucion](../readme.md) | [Domain](../Bookify.Domain/readme.md) | [Application](../Bookify.Application/readme.md) | [Api](../Bookify.Api/readme.md)
 
@@ -12,7 +12,7 @@ Aqui viven las implementaciones concretas de persistencia, acceso SQL, fecha/hor
 
 | Archivo | Funcion |
 | --- | --- |
-| [Authentication/KeycloakOptions.cs](Authentication/KeycloakOptions.cs) | AdminUrl, TokenUrl, AdminClientId y AdminClientSecret para el alta; AuthClientId y AuthClientSecret aun no tienen consumidor. Todos parten de cadenas vacias y no hay ValidateOnStart. |
+| [Authentication/KeycloakOptions.cs](Authentication/KeycloakOptions.cs) | AdminUrl, TokenUrl, AdminClientId y AdminClientSecret para el alta; AuthClientId y AuthClientSecret para JwtService. Cadenas vacias y sin ValidateOnStart. BaseUrl no pertenece a esta clase: el health check la lee directamente de IConfiguration. |
 | [Authentication/AuthenticationService.cs](Authentication/AuthenticationService.cs) | Implementa IAuthenticationService con HttpClient. Convierte User al modelo externo, agrega una credencial password no temporal, envia POST relativo a users y extrae el id de Location. |
 | [Authentication/AdminAuthorizationDelegatingHandler.cs](Authentication/AdminAuthorizationDelegatingHandler.cs) | Obtiene un token administrativo, coloca Authorization: Bearer en la solicitud original y exige respuesta HTTP exitosa. |
 | [Authentication/Models/AuthorizationToken.cs](Authentication/Models/AuthorizationToken.cs) | Deserializa access_token mediante JsonPropertyName. No representa expiracion ni refresh token. |
@@ -33,9 +33,9 @@ La [guia de API](../Bookify.Api/readme.md#registro-de-usuarios) contiene rutas, 
 
 ### Persistencia del identificador externo
 
-UserConfiguration conserva el indice unico de Email y agrega un indice unico sobre Id, aunque Id ya es clave primaria. **No es un indice de Identity.** Identity se mapea por convencion.
+UserConfiguration configura indices unicos de Email y de IdentityId. La columna actual es users.identity_id. El indice redundante sobre Id pertenecia a una migracion anterior y fue eliminado por Change_TableName_And_Field.
 
-[20260916085204_Add_User_IdentityId.cs](Migrations/20260916085204_Add_User_IdentityId.cs) agrega Users.identity como text nullable y el indice ix_users_id. Down elimina ambos. El archivo Designer representa el modelo de esa migracion y ApplicationDbContextModelSnapshot se actualiza para futuras diferencias de modelo. No se vinculan retroactivamente los usuarios existentes con Keycloak; sus filas pueden tener identity NULL.
+[20260916085204_Add_User_IdentityId.cs](Migrations/20260916085204_Add_User_IdentityId.cs) agrego Users.identity e ix_users_id. [Change_TableName_And_Field](Migrations/20260917064152_Change_TableName_And_Field.cs) renombra la columna a identity_id, elimina aquel indice y crea ix_users_identity_id unico. No vincula retroactivamente usuarios existentes con Keycloak; la columna admite NULL. Cada Designer representa su migracion y el Snapshot contiene el modelo final.
 
 En Development, ApplyMigration aplica esta migracion pendiente al arrancar. En otros entornos aplicarla de forma controlada y con copia de seguridad. No se ha ejecutado una migracion ni alterado una base de datos durante esta actualizacion documental.
 
@@ -65,6 +65,9 @@ Infrastructure registra autenticacion; los atributos de API deciden donde exigir
 
 - [Inventario de archivos](#inventario-de-archivos)
 - [Registro y tiempos de vida](#dependencyinjection)
+- [Login e identidad actual](#login-y-contexto-de-usuario)
+- [Roles y permisos](#autorizacion-local)
+- [Health checks](#health-checks)
 - [Contexto y eventos](#applicationdbcontext)
 - [Mapeo de entidades](#configurations)
 - [Migraciones y esquema](#migrations)
@@ -120,6 +123,8 @@ El proyecto referencia:
 Bookify.Infrastructure
 |-- ApplicationDbContext.cs
 |-- DependencyInjection.cs
+|-- Authentication
+|-- Authorization
 |-- Clock
 |-- Configurations
 |-- Data
@@ -161,6 +166,8 @@ Y tambien puede registrar repositorios definidos en Domain.
 
 Las versiones declaradas son `EFCore.NamingConventions` 10.0.1, `Microsoft.Extensions.Configuration.Abstractions` 10.0.11 y `Npgsql.EntityFrameworkCore.PostgreSQL` 10.0.3. Domain se alcanza de forma transitiva a traves de Application; no hay una segunda referencia directa de proyecto a Domain en este archivo.
 
+Los health checks agregan `AspNetCore.HealthChecks.NpgSql` 9.0.0 y `AspNetCore.HealthChecks.Uris` 9.0.0. La serializacion HTTP pertenece a API mediante UI.Client, no a esta biblioteca.
+
 ## Inventario de archivos
 
 | Archivo | Responsabilidad |
@@ -176,6 +183,10 @@ Las versiones declaradas son `EFCore.NamingConventions` 10.0.1, `Microsoft.Exten
 | [Repositories/ApartmentRepository.cs](Repositories/ApartmentRepository.cs) | Implementacion de `IApartmentRepository`. |
 | [Repositories/BookingRepository.cs](Repositories/BookingRepository.cs) | Implementacion de `IBookingRepository` y consulta de solapamiento. |
 | [Repositories/UserRepository.cs](Repositories/UserRepository.cs) | Implementacion de `IUserRepository`. |
+| [Repositories/ReviewRepository.cs](Repositories/ReviewRepository.cs) | Implementacion EF de IReviewRepository; hereda consulta y agregado. |
+| [Configurations/RoleConfiguration.cs](Configurations/RoleConfiguration.cs) | Relaciones muchos-a-muchos de roles con usuarios y permisos, y semilla Registered. |
+| [Configurations/PermissionConfiguration.cs](Configurations/PermissionConfiguration.cs) | permissions, Name obligatorio y semilla users:read. |
+| [Configurations/RolePermissionConfiguration.cs](Configurations/RolePermissionConfiguration.cs) | role_permissions, clave compuesta y asignacion inicial de permiso al rol. |
 | [Data/SqlConnectionFactory.cs](Data/SqlConnectionFactory.cs) | Construye y abre conexiones Npgsql para lecturas. |
 | [Data/DateOnlyTypeHandler.cs](Data/DateOnlyTypeHandler.cs) | Adaptacion entre fechas SQL y `DateOnly` para Dapper. |
 | [Clock/DateTimeProvider.cs](Clock/DateTimeProvider.cs) | Acceso al reloj UTC del sistema. |
@@ -209,6 +220,7 @@ Repositorios scoped:
 
 - `IApartmentRepository -> ApartmentRepository`
 - `IBookingRepository -> BookingRepository`
+- `IReviewRepository -> ReviewRepository`
 - `IUserRepository -> UserRepository`
 
 Unit of Work:
@@ -237,6 +249,9 @@ Tambien registra:
 
 - `ISqlConnectionFactory` como singleton.
 - `DateOnlyTypeHandler` en Dapper.
+- IHttpContextAccessor e IUserContext, clientes HTTP de registro/login y opciones JWT/Keycloak.
+- Transformacion de claims, proveedor de policies y handler de permisos.
+- Health checks de PostgreSQL y URL base de Keycloak.
 
 ### Tiempos de vida y dependencias compartidas
 
@@ -244,7 +259,10 @@ Tambien registra:
 | --- | --- | --- |
 | `ApplicationDbContext` | Scoped mediante `AddDbContext`. | Una sesion EF por scope. |
 | `IUnitOfWork` | Scoped, resuelve el contexto existente. | Guarda los cambios del mismo contexto que usan los repositorios. |
-| Los tres repositorios | Scoped. | Comparten seguimiento y cambios pendientes dentro de la operacion. |
+| Los cuatro repositorios | Scoped. | Comparten seguimiento y cambios pendientes dentro de la operacion. |
+| IUserContext y AuthorizationService | Scoped. | Acceso a identidad de solicitud y consultas EF de autorizacion. |
+| CustomClaimsTransformation, PermissionAuthorizationHandler y PermissionAuthorizationPolicyProvider | Transient. | Integracion de claims y requisitos con ASP.NET Core. |
+| Clientes tipados IAuthenticationService e IJwtService | Gestionados por IHttpClientFactory. | Transporte HTTP saliente, configurado con AdminUrl o TokenUrl. |
 | Reloj y correo | Transient. | Se crea una instancia por resolucion. |
 | `ISqlConnectionFactory` | Singleton. | Comparte la fabrica y la cadena, no una conexion abierta. |
 | `DateOnlyTypeHandler` | Registro estatico de Dapper. | La conversion queda disponible para Dapper en el proceso. |
@@ -269,7 +287,7 @@ Y en configuracion debe existir una cadena:
 }
 ```
 
-`AddInfrastructure` lanza `ArgumentNullException(nameof(configuration))` si falta `ConnectionStrings:DataBase`. La comprobacion actual detecta ausencia (`null`), pero no valida que una cadena vacia o mal formada pueda abrirse. Registrar los servicios tampoco crea tablas ni aplica migraciones.
+`AddInfrastructure` lanza `ArgumentNullException(nameof(configuration))` si falta ConnectionStrings:DataBase. Tambien necesita una Keycloak:BaseUrl valida porque construye su Uri durante el registro. Registrar servicios no comprueba conectividad, crea tablas ni aplica migraciones.
 
 Para resolver `ApplicationDbContext` hace falta el `IPublisher` que registra MediatR a traves de `AddApplication`. Un host completo registra ambas capas:
 
@@ -283,7 +301,52 @@ builder.Services.AddInfrastructure(builder.Configuration);
 
 Este registro ya se ejecuta en `Bookify.Api/Program.cs`. La API resuelve las implementaciones desde sus controladores a traves de MediatR. En Development, ademas, aplica las migraciones con `ApplyMigration()` despues de construir el host.
 
-La clave `Database` del archivo `Bookify.Api/appsettings.Development.json` coincide con `DataBase`, porque la configuracion de .NET no distingue mayusculas en las claves. Su host `bookify-db` es valido dentro de la red Compose. Desde Windows, con el puerto 5432 publicado, debe sobrescribirse la cadena con host `localhost`, por ejemplo mediante `ConnectionStrings__Database`.
+La clave Database de Development coincide con DataBase porque la configuracion no distingue mayusculas. Development utiliza localhost; Compose sobrescribe la conexion con bookify-db. Los valores deben poder resolverse desde el proceso que ejecuta API, no desde el navegador del usuario.
+
+## Health checks
+
+AddInfrastructure invoca el nuevo metodo privado AddHealthChecks despues de persistencia, autenticacion y autorizacion. No hay clases propias de checks: se usan las implementaciones de los paquetes registrados aqui.
+
+```csharp
+services.AddHealthChecks()
+    .AddNpgSql(configuration.GetConnectionString("Database")!)
+    .AddUrlGroup(
+        new Uri(configuration["KeyCloak:BaseUrl"]!),
+        HttpMethod.Get,
+        "keycloak");
+```
+
+AddNpgSql registra la entrada npgsql con la misma cadena que la persistencia y la consulta predeterminada SELECT 1. No utiliza ApplicationDbContext ni ISqlConnectionFactory: sustituir esas dependencias en un test no sustituye este check. AddUrlGroup registra keycloak y hace GET a BaseUrl; no usa los clientes administrativos o de login ni sus secretos.
+
+BaseUrl es una clave de IConfiguration, no una propiedad de KeycloakOptions. Si no existe, new Uri lanza ArgumentNullException al registrar Infrastructure; `!` no aporta un valor ni valida la configuracion. Development la define como http://localhost:18080. Dentro de Compose debe ser http://bookify-idp:8080, pero **la variable Keycloak__BaseUrl aun no esta en el YAML**. En Production hay que suministrarla junto a las demas opciones.
+
+El registro no realiza el sondeo remoto por si solo. API ejecuta los checks al atender `/health` y serializa el informe con UIResponseWriter. No hay sondeo periodico, dashboard, tags o endpoints separados de liveness/readiness configurados. Un exito comprueba conectividad basica, no tablas, permisos de escritura, existencia del realm, credenciales ni firmas JWT. Ver [contrato HTTP y diagnostico](../Bookify.Api/readme.md#estado-de-salud-health).
+
+## Login y contexto de usuario
+
+| Archivo | Funcionamiento |
+| --- | --- |
+| [Authentication/JwtService.cs](Authentication/JwtService.cs) | Implementa IJwtService. Envia a TokenUrl un formulario con AuthClientId/AuthClientSecret, scope openid email, grant_type password, username y password. Devuelve access_token; convierte HttpRequestException y respuesta JSON nula en Result fallido. |
+| [Authentication/UserContext.cs](Authentication/UserContext.cs) | Implementa IUserContext mediante IHttpContextAccessor: expone IdentityId externo y UserId local; lanza si no hay contexto o claims utilizables. |
+| [Authentication/Extensions/ClaimsPrincipalExtensions.cs](Authentication/Extensions/ClaimsPrincipalExtensions.cs) | GetIdentityId lee ClaimTypes.NameIdentifier; GetUserId lee el claim literal sub y exige que sea Guid. |
+
+JwtService no persiste usuarios, cachea tokens ni renueva sesiones. Los errores de JSON y cancelacion no se capturan como HttpRequestException. El handler de Application traduce su Result fallido a UserErrors.InvalidCredentials. Un access_token vacio no se valida expresamente. El identificador externo no debe confundirse con el Guid local; la transformacion siguiente establece el enlace.
+
+## Autorizacion local
+
+| Archivo | Funcionamiento |
+| --- | --- |
+| [Authorization/AuthorizationService.cs](Authorization/AuthorizationService.cs) | GetRolesForUserAsync proyecta Id y la lista completa de roles del primer usuario coincidente con IdentityId. GetPermissionsForUserAsync aplana roles y permisos, selecciona Name, aplica Distinct, materializa y construye HashSet<string>. |
+| [Authorization/UserRolesResponse.cs](Authorization/UserRolesResponse.cs) | DTO con Guid local y coleccion de Role usada para enriquecer el principal. |
+| [Authorization/CustomClaimsTransformation.cs](Authorization/CustomClaimsTransformation.cs) | Evita repetir el enriquecimiento si encuentra rol y sub; crea scope, consulta usuario local y agrega una identidad con sub=User.Id y los ClaimTypes.Role locales. |
+| [Authorization/HasPermissionAttribute.cs](Authorization/HasPermissionAttribute.cs) | AuthorizeAttribute cuyo nombre de policy es el permiso solicitado. |
+| [Authorization/PermissionRequirement.cs](Authorization/PermissionRequirement.cs) | Transporta ese nombre como requisito. |
+| [Authorization/PermissionAuthorizationPolicyProvider.cs](Authorization/PermissionAuthorizationPolicyProvider.cs) | Reutiliza policies registradas o crea y almacena una policy con PermissionRequirement. |
+| [Authorization/PermissionAuthorizationHandler.cs](Authorization/PermissionAuthorizationHandler.cs) | Sale si el principal no esta autenticado; consulta permisos en un scope y llama Succeed solo si permissions.Contains(requirement.Permission). |
+
+FirstAsync en la consulta de roles selecciona un usuario, no un unico rol: Roles contiene la lista completa. Si el usuario no existe, lanza. En cambio, la consulta plana de permisos devuelve conjunto vacio si no hay filas; incluye permisos de todos los roles y elimina duplicados. La transformacion de claims puede fallar antes de esa consulta si no existe usuario local.
+
+El rol Registered se asigna al crear User. Las migraciones siembran el rol, el permiso users:read y su relacion. No se sincronizan con roles de Keycloak. La comprobacion funcional por permiso no implica propiedad sobre una reserva; esta se realiza en Application. Detalles en [Roles.md](Roles.md), [Permisos.md](Permisos.md) y [Recursos.md](Recursos.md).
 
 ## ApplicationDbContext
 
@@ -374,7 +437,7 @@ Esta carpeta contiene configuraciones de EF Core por entidad. Se usa Fluent API 
 
 `HasConversion` transforma un objeto de valor de una propiedad en un valor persistible y lo reconstruye al leer. `OwnsOne` modela un objeto dependiente del propietario, como `Money` o `Address`; no crea un repositorio independiente para ese objeto. `HasOne<T>().WithMany().HasForeignKey(...)` establece relaciones por identificador sin exigir propiedades de navegacion en las entidades.
 
-Las configuraciones llaman a `ToTable` con `Apartments`, `Bookings`, `Reviews` y `Users`. Aunque el registro global agrega snake_case, la migracion inicial conserva esos nombres explicitos de tabla con mayusculas y genera las columnas en snake_case. Las consultas Dapper usan `apartments` y `bookings` sin comillas; no coinciden con esas tablas entrecomilladas de PostgreSQL. La discrepancia sigue pendiente en el codigo actual.
+Las configuraciones actuales usan apartments, bookings, reviews, users, roles, permissions y role_permissions. Las tablas con mayusculas pertenecen al esquema inicial; Change_TableName_And_Field las renombra y alinea las consultas Dapper. El modelo final se obtiene aplicando la secuencia de migraciones, no solamente Initial_Database.
 
 ### ApartmentConfiguration
 
@@ -382,7 +445,7 @@ Configura la entidad `Apartment`.
 
 Responsabilidades:
 
-- Mapear a tabla `Apartments`.
+- Mapear a tabla `apartments`.
 - Definir `Id` como clave primaria.
 - Mapear `Address` como owned type.
 - Convertir `Name` a string y reconstruirlo con `Name.Create(value).Value`.
@@ -412,7 +475,7 @@ Configura la entidad `Booking`.
 
 Responsabilidades:
 
-- Mapear a tabla `Bookings`.
+- Mapear a tabla `bookings`.
 - Definir `Id` como clave primaria.
 - Mapear como owned types los objetos `Money`: `PriceForPeriod`, `CleaningFee`, `AmenitiesUpChange` y `TotalPrice`.
 - Convertir monedas mediante `Currency.Code` y `Currency.FromCode`.
@@ -424,7 +487,7 @@ Este mapeo permite persistir objetos ricos del dominio sin cambiar sus tipos a m
 
 `Booking` no tiene token de concurrencia configurado en este archivo. La proteccion del flujo de reserva procede de actualizar `Apartment`. Un futuro comando que solo modifique el estado de una reserva no obtiene automaticamente esa proteccion.
 
-El nombre de la propiedad es literalmente `AmenitiesUpChange`, mientras `PricingDetails` y las consultas usan `AmenitiesUpCharge`. No hay un `HasColumnName` que unifique esa diferencia. Los campos `amenities_up_charge_*` solicitados por `GetBookingQueryHandler` deben comprobarse frente al esquema generado.
+El nombre de la propiedad es AmenitiesUpChange, mientras PricingDetails y el DTO usan AmenitiesUpCharge. GetBookingQueryHandler consulta las columnas reales amenities_up_change_* y usa alias hacia los nombres del DTO; no requiere cambiar el mapeo EF para esa lectura.
 
 ### ReviewConfiguration
 
@@ -432,7 +495,7 @@ Configura la entidad `Review`.
 
 Responsabilidades:
 
-- Mapear a tabla `Reviews`.
+- Mapear a tabla `reviews`.
 - Definir `Id` como clave primaria.
 - Convertir `Rating` a entero y reconstruirlo con `Rating.Create(value).Value`.
 - Convertir `Comment` a string.
@@ -451,7 +514,7 @@ Configura la entidad `User`.
 
 Responsabilidades:
 
-- Mapear a tabla `Users`.
+- Mapear a tabla `users`.
 - Definir `Id` como clave primaria.
 - Convertir `FirstName` a string.
 - Convertir `LastName` a string.
@@ -459,6 +522,7 @@ Responsabilidades:
 - Limitar `FirstName` y `LastName` a 200 caracteres.
 - Limitar `Email` a 400 caracteres.
 - Crear indice unico sobre `Email`.
+- Crear indice unico sobre IdentityId, almacenado como identity_id.
 
 El indice unico protege que no existan dos usuarios con el mismo email en la base de datos.
 
@@ -466,7 +530,17 @@ Esa proteccion requiere que el indice se haya creado realmente en la base de dat
 
 ## Migrations
 
-Infrastructure contiene la migracion `20260909102321_Initial_Database`. Las herramientas de EF construyen el modelo a partir de `ApplicationDbContext` y sus configuraciones, y generan cambios de esquema. La creacion de archivos y su aplicacion a PostgreSQL son pasos distintos.
+Infrastructure contiene cinco migraciones. Las herramientas EF construyen el modelo desde ApplicationDbContext y sus configuraciones; crear archivos y aplicarlos a PostgreSQL son pasos distintos.
+
+| Migracion | Cambio |
+| --- | --- |
+| [20260909102321_Initial_Database.cs](Migrations/20260909102321_Initial_Database.cs) | Esquema inicial de apartamentos, usuarios, reservas y reviews. |
+| [20260916085204_Add_User_IdentityId.cs](Migrations/20260916085204_Add_User_IdentityId.cs) | Agrega identity e indice ix_users_id inicial. |
+| [20260916173041_Add_UserRole.cs](Migrations/20260916173041_Add_UserRole.cs) | Roles, tabla de union role_user y semilla Registered. |
+| [20260917064152_Change_TableName_And_Field.cs](Migrations/20260917064152_Change_TableName_And_Field.cs) | Tablas en minusculas, identity_id e indice unico externo en sustitucion del indice sobre Id. |
+| [20260917104130_Add_Permission_Tables.cs](Migrations/20260917104130_Add_Permission_Tables.cs) | permissions y role_permissions; semilla users:read y asignacion a Registered. |
+
+Cada archivo tiene un Designer con BuildTargetModel que conserva su modelo destino. ApplicationDbContextModelSnapshot contiene el ultimo modelo. Los health checks no cambian entidades ni requieren una sexta migracion.
 
 ### Constructores y creacion del modelo
 
@@ -549,7 +623,7 @@ Al generar migraciones, las herramientas validan el modelo de EF; eso no ejecuta
 
 Ademas de la direccion, muchos campos de referencia e importes owned aceptan `NULL` porque Domain tiene nullable deshabilitado y faltan restricciones explicitas. Los constructores privados solucionan la construccion del modelo, pero no corrigen esas reglas de obligatoriedad. Tampoco hay restricciones de base de datos de longitud exacta del nombre, rango de puntuacion o exclusion de reservas solapadas.
 
-El esquema inicial confirma diferencias con Application: las tablas mantienen mayusculas y el recargo usa `amenities_up_change_*`. Las queries usan tablas en minusculas sin comillas y GetBooking usa `amenities_up_charge_*`. Las monedas, fechas e importe del DTO `BookingResponse` ya estan corregidos; permanecen las diferencias del SQL y del parametro `@BookingId`.
+El esquema actual, tras las cinco migraciones, usa tablas en minusculas. GetBooking consulta amenities_up_change_* con los alias del DTO y aporta BookingId al filtro: esas diferencias historicas estan corregidas. Los limites de nulabilidad y la ausencia de restricciones de exclusion o longitud exacta siguen siendo cuestiones distintas.
 
 ## Repositories
 
@@ -615,7 +689,7 @@ No agrega metodos propios porque hereda `GetByIdAsync` y `Add` de la base generi
 
 [ReviewRepository.cs](Repositories/ReviewRepository.cs) es una clase interna sellada que hereda `Repository<Review>` e implementa `IReviewRepository`. Su constructor recibe el contexto scoped. El `Add` heredado registra la resena en EF; el handler confirma la escritura mediante `IUnitOfWork`, que resuelve el mismo contexto. `AddInfrastructure` registra `IReviewRepository -> ReviewRepository` como scoped junto a los otros repositorios.
 
-Reutiliza `ReviewConfiguration` y la tabla `Reviews` de la migracion inicial. El contexto publica los eventos acumulados despues del guardado, incluido `ReviewCreatedDomainEvent`, que todavia no tiene consumidor. No se necesita una migracion para conectar este flujo ni se agregan restricciones de unicidad por reserva.
+Reutiliza ReviewConfiguration y la tabla reviews (Reviews en la migracion inicial, renombrada posteriormente). El contexto publica los eventos acumulados despues del guardado, incluido ReviewCreatedDomainEvent, que todavia no tiene consumidor. No se agregan restricciones de unicidad por reserva.
 
 ### UserRepository
 
@@ -627,12 +701,7 @@ Hereda de:
 Repository<User>
 ```
 
-No agrega metodos propios porque actualmente necesita:
-
-- `GetByIdAsync`
-- `Add`
-
-Ambos vienen de `Repository<TEntity>`.
+Hereda GetByIdAsync, pero sobrescribe Add: primero adjunta con Attach los roles del usuario al contexto y despues llama a base.Add(user). Asi el rol Registered existente no se inserta de nuevo; se agrega el usuario y su asociacion. El rol debe existir por la migracion. El metodo no guarda: Application llama despues a IUnitOfWork.
 
 ### BookingRepository
 
@@ -840,15 +909,16 @@ La traduccion de excepciones ya esta conectada; las garantias de concurrencia y 
 
 ## Puntos a revisar
 
-- Existe `20260909102321_Initial_Database`, su Designer y el Snapshot. Las tablas conservan mayusculas, hay numerosos campos nullable y `Address` sigue siendo opcional; la generacion de la migracion no prueba su aplicacion en una base concreta.
+- Existen cinco migraciones y el Snapshot final con tablas en minusculas. Muchos campos siguen siendo nullable y Address opcional; los archivos no prueban la aplicacion a una base concreta.
 - `EmailService` no envia emails reales todavia.
 - `ApplicationDbContext` publica eventos despues de guardar. Si un handler de evento falla, los datos ya fueron persistidos. Para escenarios criticos podria evaluarse un outbox pattern.
 - `BookingRepository.IsOverlappingAsync` reduce el riesgo de reservas solapadas, pero por si solo no garantiza atomicidad ante concurrencia. La concurrencia optimista sobre `Apartment` ayuda, aunque para maxima robustez conviene apoyarse tambien en restricciones de base de datos.
 - El nombre de la cadena de conexion es `DataBase`. Conviene mantenerlo consistente en los archivos de configuracion.
-- Las consultas SQL viven en Application. El DTO ya tiene corregidos importes, monedas y alias de fechas; quedan pendientes el parametro de `GetBooking`, los nombres de tabla y `AmenitiesUpChange`/`AmenitiesUpCharge`.
+- Las consultas SQL viven en Application. GetBooking ya alinea nombres y parametros con el esquema; sigue siendo necesario probar SQL y materializacion contra PostgreSQL.
 - Las fabricas de `Name` y `Rating` pueden rechazar datos al materializarlos. Tener una configuracion EF y una compilacion correcta no demuestra que todos los datos existentes sean validos ni que las entidades se materialicen correctamente.
 - `DateOnlyTypeHandler.Parse` presupone un `DateTime`; conviene probar el contrato con el proveedor configurado.
-- Api ya conecta las capas y aplica migraciones en Development. No hay proyectos de pruebas de integracion; la materializacion real, el SQL y los conflictos concurrentes requieren comprobaciones contra PostgreSQL.
+- [Infrastructure.Tests](../Tests/Bookify.Infrastructure.Tests/readme.md) incluye pruebas sin red y pruebas PostgreSQL opcionales con bases aisladas. Estas ultimas requieren BOOKIFY_TEST_POSTGRES; no se han ejecutado en esta revision documental.
+- El 22/09/2026, el grupo sin red pasa sus 82 casos tras agregar Keycloak:BaseUrl ficticia a DependencyInjectionTests. Se corrige el arranque del contenedor DI; no se comprueba conectividad externa ni la ejecucion de /health.
 
 ## Resumen
 

@@ -6,11 +6,11 @@ La capa Domain no deberia depender de detalles externos como bases de datos, con
 
 [Guia de la solucion](../readme.md) | [Application](../Bookify.Application/readme.md) | [Infrastructure](../Bookify.Infrastructure/readme.md) | [Api](../Bookify.Api/readme.md)
 
-## User.Identity y registro externo
+## User.IdentityId y registro externo
 
-User incorpora Identity (string con valor inicial vacio y setter privado) y SetIdentityId(string identityId), que asigna el identificador devuelto por el proveedor externo. El metodo no comprueba valor vacio, formato, unicidad ni si ya existia un identificador.
+User incorpora IdentityId (string con valor inicial vacio y setter privado) y SetIdentityId(string identityId), que asigna el identificador devuelto por el proveedor externo. El metodo no comprueba valor vacio, formato, unicidad ni si ya existia un identificador.
 
-User.Id sigue siendo el GUID local generado por User.Create. Identity guarda el id de Keycloak y permite representar esa asociacion; no sustituye el GUID usado por reservas. Los usuarios antiguos no se enlazan automaticamente. No hay aun resolucion del claim sub hacia User ni autorizacion basada en ese enlace.
+User.Id sigue siendo el GUID local generado por User.Create. IdentityId guarda el id de Keycloak; no sustituye el GUID usado por reservas. Los usuarios antiguos no se enlazan automaticamente. Infrastructure resuelve el enlace al transformar claims y Application usa IUserContext para comprobar el propietario al consultar una reserva.
 
 User.Create sigue acumulando UserCreatedDomainEvent, sin realizar operaciones HTTP ni guardar en BD. El nuevo caso de uso CreateUser de Application coordina la creacion externa, SetIdentityId y la persistencia local. Domain no almacena passwords ni conoce KeycloakOptions o HttpClient. El evento no tiene handler actual.
 
@@ -19,7 +19,9 @@ User.Create sigue acumulando UserCreatedDomainEvent, sin realizar operaciones HT
 
 Keycloak autentica identidades externas; User modela el usuario del negocio. JWT no introduce dependencias de HttpContext, ASP.NET Core ni Keycloak en Domain.
 
-User.Identity almacena el identificador externo durante el registro, pero no existe todavia resolucion del claim sub hacia User.Id. No asumir que ambos identificadores son equivalentes ni que validar un token crea un usuario de dominio. UserErrors.InvalidCredentials sigue declarado, sin implementar un caso de uso de login o almacenar contrasenas en User.
+User.IdentityId almacena el identificador externo durante el registro. Infrastructure agrega el Guid local y los roles al principal; no asumir que ambos identificadores son equivalentes ni que validar un token crea un usuario. Application implementa LogInUser y usa UserErrors.InvalidCredentials para el fallo de login; User sigue sin almacenar contrasenas.
+
+La incorporacion de `/health` no modifica Domain: las sondas de PostgreSQL/Keycloak pertenecen a Infrastructure y su publicacion HTTP a API.
 
 Review.Create copia booking.UserId y comprueba elegibilidad, pero no autentica al solicitante ni comprueba su propiedad sobre la reserva. La proteccion HTTP de apartamentos vive en API; no sustituye reglas de acceso a reservas o reviews. Consultar [Application](../Bookify.Application/readme.md#jwt-y-acceso-a-los-casos-de-uso) para los limites de autorizacion actuales.
 
@@ -89,6 +91,7 @@ Todos los archivos de codigo de la capa estan relacionados aqui. Los apartados p
 | [Abstractions/Error.cs](Abstractions/Error.cs) | Codigo y descripcion de error. |
 | [Abstractions/Result.cs](Abstractions/Result.cs) | `Result` y `Result<TValue>`, resultados sin valor y con valor. |
 | [Abstractions/IUnitOfWork.cs](Abstractions/IUnitOfWork.cs) | Contrato de guardado de cambios. |
+| [Abstractions/IRepository.cs](Abstractions/IRepository.cs) | Contrato generico GetByIdAsync y Add para entidades. |
 | [Commons/Currency.cs](Commons/Currency.cs) | Monedas admitidas y conversion por codigo. |
 | [Commons/Money.cs](Commons/Money.cs) | Importe, moneda y suma monetaria. |
 | [Apartments/Apartment.cs](Apartments/Apartment.cs) | Apartamento, precios, direccion y comodidades. |
@@ -100,6 +103,9 @@ Todos los archivos de codigo de la capa estan relacionados aqui. Los apartados p
 | [Apartments/ApartmentErrors.cs](Apartments/ApartmentErrors.cs) | Error de apartamento inexistente. |
 | [Apartments/IApartmentRepository.cs](Apartments/IApartmentRepository.cs) | Consulta por identificador. |
 | [Users/User.cs](Users/User.cs) | Creacion y datos de usuario. |
+| [Users/Role.cs](Users/Role.cs) | Catalogo de roles con usuarios/permisos y valor Registered. |
+| [Users/Permission.cs](Users/Permission.cs) | Catalogo de permisos con valor UserRead = users:read. |
+| [Users/RolePermission.cs](Users/RolePermission.cs) | Par RoleId/PermissionId para la relacion muchos-a-muchos. |
 | [Users/FirstName.cs](Users/FirstName.cs) | Nombre del usuario. |
 | [Users/LastName.cs](Users/LastName.cs) | Apellido del usuario. |
 | [Users/Email.cs](Users/Email.cs) | Direccion de correo del usuario. |
@@ -262,6 +268,12 @@ Las dos clases siguen estando en `Abstractions/Result.cs`. `Result<TValue>` here
 `[NotNull]` sobre `Value` comunica una poscondicion a los analizadores de nulabilidad; no ejecuta una comprobacion en tiempo de ejecucion. Lo mismo ocurre con el operador de supresion `!` en `field!`. La proteccion frente a nulos depende del camino de construccion usado; `Success<string>(null)` no pasa por `Create`.
 
 No existe conversion implicita de `Error` a `Result`. Un metodo que devuelve `Result<T>` propaga un error con `Result.Failure<T>(error)`, no con `return error;`.
+
+### IRepository<TEntity>
+
+Contrato generico restringido a Entity. GetByIdAsync(Guid, CancellationToken) devuelve Task<TEntity?> y Add(TEntity) no devuelve valor. IApartmentRepository, IBookingRepository, IReviewRepository e IUserRepository heredan ese contrato; IBookingRepository agrega IsOverlappingAsync.
+
+No expone IQueryable ni tipos EF y no incluye SaveChanges: IUnitOfWork conserva el limite de guardado. Permite centralizar operaciones repetidas manteniendo interfaces por agregado; no obliga a ofrecer en HTTP todas las operaciones del repositorio.
 
 ### IUnitOfWork
 
@@ -522,6 +534,8 @@ Propiedades:
 - `FirstName`
 - `LastName`
 - `Email`
+- `IdentityId`, identificador externo asignado con SetIdentityId.
+- `Roles`, IReadOnlyCollection<Role> respaldada por una lista privada.
 
 No se crea directamente con `new` desde fuera porque sus constructores son privados. Ademas del constructor parametrizado que utiliza la fabrica, `User` tiene `private User()` para permitir su reconstruccion por persistencia sin invocar `Create` ni generar eventos nuevos por una lectura. Para crear un usuario nuevo se usa:
 
@@ -537,7 +551,15 @@ UserCreatedDomainEvent
 
 Esto permite que otras partes del sistema reaccionen, por ejemplo enviando un correo de bienvenida o registrando auditoria.
 
-Esos efectos del evento son posibilidades: no hay handler de `UserCreatedDomainEvent`. Application ya incorpora CreateUser para coordinar el registro externo y el guardado. `User.Create` genera un `Guid`, asigna los objetos de valor y acumula el evento, pero no guarda ni verifica unicidad o formato del email.
+Esos efectos del evento son posibilidades: no hay handler de UserCreatedDomainEvent. User.Create genera un Guid, asigna los valores, acumula el evento y agrega Role.Registered a su lista de roles. Application coordina registro externo y guardado; Domain no verifica unicidad o formato del email.
+
+### Role, Permission y RolePermission
+
+Role contiene Id y Name, constructor publico y colecciones Users y Permissions. Su instancia estatica Registered tiene Id=1 y Name="Registered". User.Create asigna esa referencia, no crea un rol nuevo por usuario. Las listas de roles de usuarios distintos son independientes, pero la instancia estatica de Role y sus colecciones son compartidas; los tests no deben mutarlas.
+
+Permission contiene Id y Name con init y constructor publico. UserRead tiene Id=1 y Name="users:read". No hereda Entity, no genera eventos y no valida que Name sea unico o no vacio. RolePermission contiene RoleId y PermissionId con get/set; representa la union, no un permiso propietario de un unico rol.
+
+Infrastructure configura las relaciones muchos-a-muchos y las semillas. Domain no ejecuta policies ni consulta claims. La API usa las constantes Registered y users:read para exigir los mismos nombres. Veanse [Roles](../Bookify.Infrastructure/Roles.md) y [Permisos](../Bookify.Infrastructure/Permisos.md).
 
 ### FirstName
 
@@ -578,7 +600,7 @@ Errores actuales:
 
 Se usan para devolver fallos controlados desde casos de uso de Application.
 
-`NotFound` se utiliza al reservar. `InvalidCredentials` esta declarado, pero no hay un caso de uso de autenticacion ni contrasenas en el modelo de usuario actual.
+NotFound se utiliza al reservar. InvalidCredentials se utiliza en LogInUserCommandHandler cuando IJwtService devuelve un Result fallido. El modelo de usuario no conserva contrasenas.
 
 ### IUserRepository
 
@@ -1187,6 +1209,8 @@ Estos puntos no impiden entender la capa, pero conviene tenerlos presentes:
 - El token de concurrencia pertenece al mapeo de `Apartment` en Infrastructure. Los metodos del dominio por si solos no consultan disponibilidad ni garantizan que no se inserten reservas solapadas desde otros caminos.
 
 ## Resumen
+
+Las reglas descritas se prueban en [Bookify.Domain.Tests](../Tests/Bookify.Domain.Tests/readme.md): 137 casos correctos el 22/09/2026. No requieren servicios externos; la materializacion EF, los indices y xmin se comprueban en Infrastructure.Tests con su alcance especifico.
 
 `Bookify.Domain` contiene el modelo central del negocio. Sus entidades encapsulan identidad y comportamiento, sus objetos de valor expresan conceptos importantes, sus errores permiten fallos controlados, sus eventos comunican cambios relevantes y sus repositorios definen contratos sin acoplar el dominio a la base de datos.
 

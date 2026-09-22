@@ -1,17 +1,25 @@
 # Bookify
 
+## Estado de salud
+
+`GET /health` devuelve JSON con el estado de PostgreSQL y de la URL base de Keycloak. Se publica en todos los entornos, sin exigir autorizacion; no es una interfaz grafica ni una prueba completa de login o del esquema. Consultar [funcionamiento y diagnostico](Bookify.Api/readme.md#estado-de-salud-health) y [registro de los checks](Bookify.Infrastructure/readme.md#health-checks).
+
+La nueva clave `Keycloak:BaseUrl` es obligatoria al registrar Infrastructure: Development usa `http://localhost:18080`. Dentro de Compose debe proporcionarse `Keycloak__BaseUrl=http://bookify-idp:8080`. **El Compose actual todavia no incluye esa variable**; sus otras URLs de Keycloak no sustituyen BaseUrl. Sin ella, el valor local heredado apunta al propio contenedor API y el check puede fallar.
+
 ## Registro de usuarios: cambios actuales
 
-Existe POST /api/users/register, anonimo mediante [AllowAnonymous]. Recibe nombre, apellido, email y password, registra la identidad en Keycloak, guarda User.Identity y persiste el usuario local. Responde 200 con Result<Guid>, no con un JWT. El GUID de respuesta es User.Id de Bookify.
+Existe POST /api/users/register, anonimo mediante [AllowAnonymous]. Recibe nombre, apellido, email y password, registra la identidad en Keycloak, guarda User.IdentityId y persiste el usuario local con el rol Registered. Responde 200 con el GUID User.Id de Bookify, no con el objeto Result ni con un JWT.
 
 Application incorpora CreateUser e IAuthenticationService. Infrastructure implementa el cliente administrativo HTTP, obtiene un token por client_credentials y agrega la migracion Add_User_IdentityId. No hay transaccion comun ni compensacion entre Keycloak y PostgreSQL.
 
-Consultar [API](Bookify.Api/readme.md#registro-de-usuarios), [Application](Bookify.Application/readme.md#userscreateuser), [Infrastructure](Bookify.Infrastructure/readme.md#registro-administrativo-en-keycloak) y [Domain](Bookify.Domain/readme.md#useridentity-y-registro-externo). Requisitos pendientes de comprobar: permisos del cliente administrativo, URLs con o sin /auth, aplicacion de la migracion y externalizacion de secretos. Los README no reproducen valores secretos del JSON.
+Consultar [API](Bookify.Api/readme.md#registro-de-usuarios), [Application](Bookify.Application/readme.md#userscreateuser), [Infrastructure](Bookify.Infrastructure/readme.md#registro-administrativo-en-keycloak) y [Domain](Bookify.Domain/readme.md#useridentityid-y-registro-externo). Los clientes y sus permisos deben estar configurados en el realm real. Los README no reproducen valores secretos del JSON.
 
 
 ## JWT y Keycloak
 
-La API incorpora JWT Bearer: Infrastructure registra el esquema y API ejecuta UseAuthentication antes de UseAuthorization. GET y POST /api/apartments requieren un access token por [Authorize]. Reservas y reviews siguen sin proteccion por atributos ni politica global. No hay roles, control de propiedad ni vinculacion automatica entre sub y User.Id.
+La API incorpora JWT Bearer: Infrastructure registra el esquema y API ejecuta UseAuthentication antes de UseAuthorization. GET y POST /api/apartments requieren un access token por [Authorize]. POST /api/users/login obtiene un token de Keycloak; GET /api/users/LogInUser exige autenticacion, rol Registered y permiso users:read. Los roles y permisos proceden de PostgreSQL, no de los roles del realm.
+
+CustomClaimsTransformation resuelve la identidad externa hacia el usuario local. GetBooking comprueba que la reserva pertenezca a IUserContext.UserId. Reservas y reviews siguen sin [Authorize] ni politica global: el control de propiedad de la lectura no protege por si solo todos esos endpoints. Veanse [roles](Bookify.Infrastructure/Roles.md), [permisos](Bookify.Infrastructure/Permisos.md) y [recursos](Bookify.Infrastructure/Recursos.md).
 
 La seccion Authentication utiliza Audience, Issuer, MetadataUrl y RequireHttpsMetadata. Development apunta a localhost:18080; Compose sobrescribe metadatos y URLs administrativas con bookify-idp:8080. El emisor publico se mantiene en http://localhost:18080/realms/bookify en ambos modos. Audience=account debe coincidir con aud del token real.
 
@@ -55,7 +63,8 @@ Esta separacion permite que las reglas de una reserva no dependan de un controla
 | --- | --- |
 | [Bookify.slnx](Bookify.slnx) | Agrupa Api, Application, Domain e Infrastructure bajo `/Scr/`, Docker Compose y los proyectos de arquitectura y pruebas unitarias bajo `/Tests/`. |
 | [Bookify.csproj](Bookify.csproj) | Proyecto de consola residual, fuera de la solucion y sin referencias a las capas. No es el host actual; ya no existe `Program.cs` en la raiz. |
-| [docker-compose.yml](docker-compose.yml) | Define API, PostgreSQL 17, imagen, dependencia, credenciales locales y persistencia de datos. |
+| [docker-compose.yml](docker-compose.yml) | Define API, PostgreSQL 17 y Keycloak, sus redes/puertos, credenciales locales y persistencia. |
+| [Postman/Bookify_AddHealthCheck.postman_collection.json](Postman/Bookify_AddHealthCheck.postman_collection.json) | Coleccion con la nueva solicitud de salud y ejemplos de operaciones. Revisar variables y credenciales antes de compartirla o ejecutarla. |
 | [docker-compose.override.yml](docker-compose.override.yml) | Configuracion local: Development, puertos HTTP/HTTPS y montajes de secretos y certificados de Windows. |
 | [docker-compose.dcproj](docker-compose.dcproj) | Integra Compose con las herramientas de contenedores de Visual Studio para Linux. |
 | [launchSettings.json](launchSettings.json) | Perfil Docker Compose: inicia `bookify.api` con `StartDebugging` desde Visual Studio. |
@@ -85,18 +94,20 @@ Los eventos se publican despues de guardar y forman parte del tiempo de la solic
 
 El alta de apartamentos esta disponible en `POST /api/apartments`: contrato HTTP, comando, FluentValidation, handler y guardado EF mediante repositorio/unidad de trabajo. Devuelve `201` con el id. No necesita una migracion adicional. Consultar [contrato y ejemplo de alta](Bookify.Api/readme.md#alta-de-apartamentos), incluida la regla actual de nombre de exactamente 200 caracteres.
 
-Las pruebas del flujo se encuentran en `Tests/Bookify.UnitTests/CreateApartmentTests.cs`: ejercitan MediatR con repositorio y unidad de trabajo simulados, validacion, mapeo, propagacion del token, errores de guardado y respuesta del controlador. Las reglas de arquitectura siguen en `Tests/Bookify.ArchitectureTest`.
+Las pruebas se organizan en `Tests/Bookify.Application.Tests`, `Bookify.Domain.Tests`, `Bookify.Infrastructure.Tests`, `Bookify.Api.Tests` y `Bookify.Architecture.Tests`. `Bookify.TestUtilities` comparte contextos y datos. Las pruebas HTTP usan WebApplicationFactory; no deben confundirse con llamadas directas a controladores.
 
 | Operacion | Estado |
 | --- | --- |
-| Buscar apartamentos | `GET /api/apartments?starDate=2026-10-01&endDate=2026-10-05`. El parametro actual se llama literalmente `starDate`. |
-| Consultar reserva | `GET /api/bookings/{id}`; query y DTO existentes, con discrepancias SQL pendientes. |
+| Buscar apartamentos | `GET /api/apartments?startDate=2026-10-01&endDate=2026-10-05`, con JWT. |
+| Consultar reserva | `GET /api/bookings/{id}`; devuelve detalle solo al propietario identificado por IUserContext, o 404. |
 | Reservar | `POST /api/bookings`; comando, validacion, dominio y persistencia conectados. Requiere usuario y apartamento existentes. |
 | Confirmar, rechazar, completar y cancelar | Metodos y eventos en Domain; todavia sin comandos ni endpoints. |
 | Crear resena | `POST /api/reviews`, comando, validador y repositorio EF; exige una reserva completada. Ver [contrato y ejemplo](Bookify.Api/readme.md#alta-de-resenas). |
-| Crear usuario | Fabrica de dominio y mapeo; sin endpoint de alta. |
+| Crear usuario | `POST /api/users/register`; alta en Keycloak y PostgreSQL, 200 con GUID local. |
+| Login y perfil | `POST /api/users/login` y `GET /api/users/LogInUser`. El JSON del token usa actualmente `accessToke`. |
+| Salud | `GET /health`; conectividad PostgreSQL y GET a Keycloak:BaseUrl. |
 | Documentacion interactiva | `/swagger/index.html` consume `/openapi/v1.json`, solo en Development. |
-| Migraciones | `20260909102321_Initial_Database` en Infrastructure y aplicacion automatica al arrancar en Development. |
+| Migraciones | Cinco migraciones hasta `20260917104130_Add_Permission_Tables`; aplicacion automatica en Development. |
 
 `Result` representa fallos de negocio. Los controladores de alta los convierten en `400`; la consulta de reserva devuelve `404` ante un resultado fallido. El middleware propio convierte `ValidationException` de Application en 400 y otros errores tecnicos en 500.
 
@@ -131,12 +142,12 @@ $env:ConnectionStrings__Database = "Host=localhost;Port=5432;Database=bookify;Us
 dotnet Bookify.Api.dll
 ```
 
-La variable de entorno prevalece sobre el JSON y los secretos. Si no se especifica un entorno, el arranque directo usa Production: no ejecuta las migraciones ni el sembrado automatico; prepara la base previamente. `launchSettings.json` solo interviene al usar un perfil de lanzamiento, no al ejecutar la DLL.
+La variable de entorno prevalece sobre el JSON y los secretos. Si no se especifica un entorno, el arranque directo usa Production: no ejecuta las migraciones ni el sembrado automatico; prepara la base previamente. Ademas de la conexion, hay que proporcionar Authentication y Keycloak, incluida `Keycloak__BaseUrl`: el archivo Development no se carga en Production. `launchSettings.json` solo interviene al usar un perfil de lanzamiento, no al ejecutar la DLL.
 
 Alternativamente, para ejecutar la API en Windows con PostgreSQL publicado por Docker:
 
 ```powershell
-docker compose up -d bookify-db
+docker compose up -d bookify-db bookify-idp
 $env:ConnectionStrings__Database = "Host=localhost;Port=5432;Database=bookify;Username=postgres;Password=postgres"
 dotnet run --project Bookify.Api/Bookify.Api.csproj --launch-profile http
 ```
@@ -154,6 +165,7 @@ La API se construye con [Bookify.Api/Dockerfile](Bookify.Api/Dockerfile). Postgr
 | `bookify.api` | 5000 | 8080 | HTTP. |
 | `bookify.api` | 5001 | 8081 | HTTPS, requiere certificado accesible y configurado. |
 | `bookify-db` | 5432 | 5432 | PostgreSQL desde Windows o pgAdmin. |
+| `bookify-idp` | 18080 (127.0.0.1) | 8080 | Keycloak de desarrollo. |
 
 Con Docker Desktop activo y los secretos/certificados de desarrollo preparados:
 
@@ -182,12 +194,25 @@ Una imagen final compilada en Release no cambia `ASPNETCORE_ENVIRONMENT`: con el
 ## Cambios recientes y limites
 
 - `Entity` tiene constructor protegido vacio; `Apartment`, `Booking`, `Review` y `User` tienen constructores privados vacios. EF puede construir el modelo sin enlazar las navegaciones owned al constructor de negocio.
-- Existe la migracion inicial y sus archivos Designer y Snapshot. Crear una migracion genera codigo; aplicarla modifica la base de datos.
+- Existen cinco migraciones con sus Designer y el Snapshot actual. Crear una migracion genera codigo; aplicarla modifica la base de datos.
 - `BookingResponse` ya expone `PriceAmount`, codigos de moneda `string` y `DurationStart`/`DurationEnd` alineados con los alias de la query.
-- La migracion conserva tablas `Apartments`, `Bookings`, `Reviews` y `Users` con mayusculas, mientras Dapper consulta `apartments` y `bookings` sin comillas. Hay que alinear esos nombres para ejecutar las lecturas sobre ese esquema.
-- `GetBookingQueryHandler` sigue enviando `Id` cuando SQL solicita `@BookingId`, y consulta `amenities_up_charge_*` cuando la migracion contiene `amenities_up_change_*`.
+- `Change_TableName_And_Field` renombra las tablas a minusculas y crea el indice unico de `identity_id`. GetBooking ya envia `BookingId` y consulta `amenities_up_change_*` con alias hacia el DTO. No basta aplicar solo Initial_Database.
 - `Address` sigue siendo opcional para EF; sus columnas admiten `NULL`. El constructor vacio no establece obligatoriedad de campos ni navegaciones.
 - El conflicto de EF se traduce a `ConcurrencyException` y despues a `BookingErrors.Overlap`. El token sombra del apartamento usa `xmin` y requiere una actualizacion efectiva del apartamento; no protege todas las entidades ni cualquier insercion por otros medios.
-- Hay pruebas de arquitectura y casos de uso con repositorios simulados. JWT protege apartamentos, pero no se ha comprobado aqui el pipeline HTTP de autenticacion. Estas guias no afirman una validacion integral de reservas concurrentes o de las consultas SQL.
+- Hay pruebas HTTP con autenticacion simulada y pruebas opcionales de integracion PostgreSQL. No verifican un flujo JWT real contra Keycloak; los resultados actuales se detallan abajo.
+
+## Pruebas y verificacion
+
+Resultados comprobados con `dotnet test` por proyecto y sin servicios externos:
+
+| Proyecto y guia | Resultado |
+| --- | --- |
+| [Domain.Tests](Tests/Bookify.Domain.Tests/readme.md) | 137 correctos. |
+| [Application.Tests](Tests/Bookify.Application.Tests/readme.md) | 138 correctos. |
+| [Infrastructure.Tests](Tests/Bookify.Infrastructure.Tests/readme.md), filtro Infrastructure | 82 correctos. |
+| [Api.Tests](Tests/Bookify.Api.Tests/readme.md) | 57 correctos. |
+| Bookify.Architecture.Tests | 8 correctos. |
+
+Los fallos anteriores de arranque se han corregido agregando Keycloak:BaseUrl con una URL ficticia a ApiFactory y DependencyInjectionTests. Queda pendiente probar /health con checks simulados. Los casos PostgreSQL requieren BOOKIFY_TEST_POSTGRES y no se han ejecutado en esta revision. Los informes de cobertura anteriores a health checks son historicos, no una medida del codigo actual.
 
 Para profundizar, seguir las guias en el orden Domain, Application, Infrastructure y Api. Cada una incluye el inventario de archivos y explica las decisiones y el comportamiento actual de su capa.

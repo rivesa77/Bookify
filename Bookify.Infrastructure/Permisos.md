@@ -49,7 +49,7 @@ La tabla `permissions` no contiene `role_id`: un mismo permiso puede pertenecer 
 
 ## Flujo de autorizacion por permiso
 
-El siguiente diagrama describe el flujo actual. El handler todavia no compara el nombre solicitado; la comprobacion exacta es una correccion pendiente.
+El siguiente diagrama describe el flujo actual, revisado el 22/09/2026. Ya estan aplicadas la comprobacion del permiso exacto y la union de permisos de todos los roles.
 
 ```text
 Cliente con JWT
@@ -58,7 +58,7 @@ Cliente con JWT
   -> PermissionAuthorizationPolicyProvider crea la policy dinamicamente
   -> PermissionRequirement conserva el permiso solicitado
   -> PermissionAuthorizationHandler consulta los permisos locales del usuario
-  -> si la coleccion consultada no esta vacia, el handler satisface el requisito
+  -> si permissions.Contains(requirement.Permission), satisface el requisito
   -> ASP.NET Core permite la accion si tambien se cumplen los demas requisitos
 ```
 
@@ -74,9 +74,11 @@ Las clases de `Bookify.Infrastructure/Authorization` intervienen asi:
 
 Estas clases se registran desde `DependencyInjection.AddAuthorization`: el proveedor de policies y el handler son transitorios; `AuthorizationService` es scoped porque depende de `ApplicationDbContext`.
 
-El proveedor busca primero una policy registrada. Si no existe, interpreta su nombre como permiso, crea el requisito y guarda la policy en `AuthorizationOptions`. No verifica que ese permiso exista en el catalogo. Una errata en el atributo tambien crea una policy; con la comprobacion actual de `Count > 0`, incluso esa policy podria satisfacerse.
+El proveedor busca primero una policy registrada. Si no existe, interpreta su nombre como permiso, crea el requisito y guarda la policy en AuthorizationOptions. No verifica que exista en el catalogo. Una errata crea una policy, pero no se satisface solo por tener cualquier permiso: el handler exige coincidencia del nombre solicitado.
 
-El handler comprueba `IsAuthenticated`, crea un scope, lee `IdentityId` y consulta los permisos. Si no llama a `context.Succeed(requirement)`, el requisito queda sin satisfacer. No lanza un rechazo explicito mediante `context.Fail()`.
+El handler comprueba IsAuthenticated, crea un scope, lee IdentityId y consulta los permisos. Solo llama a context.Succeed(requirement) cuando el conjunto contiene requirement.Permission. Si no, el requisito queda sin satisfacer; no llama expresamente a context.Fail().
+
+GetPermissionsForUserAsync filtra usuarios por IdentityId, aplana sus Roles con SelectMany, aplana Permissions, selecciona Name, aplica Distinct y materializa con ToListAsync. Finalmente construye HashSet<string>. Distinct elimina duplicados en la consulta y el conjunto conserva unicidad en memoria. Ya no usa FirstAsync ni se limita a los permisos de un unico rol.
 
 Este es el uso real en `UsersController.LogInUser`, que ademas hereda `[Authorize]` del controlador:
 
@@ -101,19 +103,21 @@ public async Task<IActionResult> LogInUser(CancellationToken cancellationToken)
 3. Incluir el nuevo `Permission` en `PermissionConfiguration.HasData(...)` y agregar la asignacion en `RolePermissionConfiguration.HasData(...)`. Declarar solamente un campo estatico en `Permission` no inserta la fila.
 4. Generar y aplicar una migracion si cambian los datos semilla o el modelo.
 5. Anotar el endpoint con `[HasPermission(PermissionsConstants.ApartmentsUpdate)]`.
-6. Corregir primero las limitaciones descritas a continuacion y probar: sin JWT (401), JWT sin el permiso solicitado (403) y JWT con ese permiso (respuesta propia de la accion). Incluir un usuario con un permiso distinto y otro con varios roles.
+6. Probar sin JWT (401), JWT sin el permiso solicitado (403) y JWT con ese permiso (respuesta propia de la accion). Incluir un usuario con un permiso distinto y otro con varios roles; usar un usuario local existente para no confundir la comprobacion con un fallo previo al transformar claims.
 
 Para permisos administrables desde interfaz se puede sustituir parte de las semillas por comandos de Application que creen permisos y asignaciones. La regla sigue siendo la misma: el nombre usado por la policy debe existir y estar asignado a algun rol.
 
 ## Comprobaciones y limites actuales
 
-- El handler debe comprobar `permissions.Contains(requirement.Permission)`. Actualmente `permissions.Count > 0` satisface cualquier requisito dinamico si la coleccion devuelta tiene algun permiso; los otros requisitos del endpoint, como el rol, siguen siendo obligatorios.
-- `GetPermissionsForUserAsync` usa `FirstAsync()` despues de obtener colecciones de permisos por rol. Solo toma la primera coleccion, sin un orden definido, y el `HashSet` elimina duplicados exclusivamente dentro de ella. La consulta debe aplanar todos los roles y sus permisos antes de construir el conjunto.
-- Si no hay usuario o no tiene roles, esa consulta no obtiene ninguna coleccion y `FirstAsync()` lanza. Si hay un rol sin permisos, su coleccion es vacia y el requisito no se satisface. Son situaciones diferentes; la excepcion termina en `500` mediante el middleware actual.
+- El permiso exacto ya se comprueba mediante Contains. Los otros requisitos, como el rol, siguen siendo obligatorios.
+- Se devuelve la union de permisos de todos los roles sin duplicados. Un usuario con dos roles puede obtener permisos de ambos; no depende de cual se lea primero.
+- La consulta de permisos devuelve un conjunto vacio si no hay usuario, roles o permisos. En cambio, GetRolesForUserAsync conserva FirstAsync sobre la proyeccion del usuario y lanza si no existe. La transformacion de claims puede fallar antes y terminar en 500; no se ha resuelto ese caso por cambiar la consulta de permisos.
 - No hay cache de los permisos del usuario. Las policies si se almacenan en `AuthorizationOptions`. Cada comprobacion autenticada abre un scope y consulta la base de datos.
 - Un permiso global no determina si el usuario puede actuar sobre una fila concreta. Para ese caso se necesita autorizacion basada en recursos; vease `Recursos.md`.
 - Los permisos locales no se sincronizan automaticamente con roles de Keycloak. La fuente de verdad de estas autorizaciones es PostgreSQL.
 
 ## Seguridad operativa
+
+PostgresAuthorizationTests incluye casos de permiso diferente al requerido, conjunto vacio y union de varios roles. Requieren BOOKIFY_TEST_POSTGRES y no se han ejecutado en esta revision documental. Los tests HTTP de API sustituyen la policy por claims de prueba: no verifican esta consulta EF real. Consultar [la guia de tests](../Tests/Bookify.Infrastructure.Tests/readme.md).
 
 No se deben exponer tokens, contrasenas, secretos de cliente o cabeceras `Authorization` en datos semilla, documentos ni registros. Los cambios de permisos y roles deben revisarse como cambios de seguridad: conceder un permiso nuevo puede abrir capacidades de negocio a usuarios existentes.

@@ -4,7 +4,7 @@ Este proyecto contiene la capa de aplicacion de Bookify. Su responsabilidad es e
 
 Application no configura EF Core, no construye conexiones Npgsql ni implementa el envio de correo. Define contratos que Infrastructure implementa. Sin embargo, sus queries contienen SQL, nombres de tablas y columnas, e incluso sintaxis de PostgreSQL como `ANY`. La construccion de la conexion esta abstraida, pero el esquema y el dialecto de las lecturas siguen siendo dependencias de esta capa.
 
-Esta guia distingue el comportamiento implementado de las limitaciones pendientes. `Bookify.Api/Program.cs` ya registra Application e Infrastructure, y sus controladores invocan los casos de uso con `ISender`. En Development, la API aplica las migraciones al arrancar. Las lecturas conservan discrepancias SQL documentadas mas abajo.
+Esta guia distingue el comportamiento implementado de las limitaciones pendientes. `Bookify.Api/Program.cs` registra Application e Infrastructure, y sus controladores invocan los casos de uso con `ISender`. En Development, la API aplica migraciones y sembrado al arrancar. Revision: 22 de septiembre de 2026. El nuevo `/health` pertenece a API/Infrastructure: no incorpora un comando ni un handler a Application.
 
 [Guia de la solucion](../readme.md) | [Domain](../Bookify.Domain/readme.md) | [Infrastructure](../Bookify.Infrastructure/readme.md) | [Api](../Bookify.Api/readme.md)
 
@@ -23,18 +23,41 @@ El handler crea User con FirstName, LastName y Email; User.Create genera el GUID
 
 No comprueba duplicados previamente, no captura errores HTTP y no convierte conflictos de Keycloak en errores Result especificos. Si falla Keycloak no llega al guardado local; si falla el guardado despues del registro externo, no elimina la identidad creada. No existe transaccion distribuida ni compensacion. UserCreatedDomainEvent sigue sin consumidor registrado.
 
-La validacion del comando no demuestra propiedad del email: la implementacion externa lo marca verificado directamente. Las pruebas futuras deben cubrir validacion, propagacion del identificador externo, orden de llamadas y fallos en ambos sistemas; no dar por validado el flujo por compilar.
+La validacion del comando no demuestra propiedad del email: la implementacion externa lo marca verificado directamente. UserCommandTests cubre validacion, propagacion de IdentityId, orden de llamadas y fallos con dependencias simuladas; no demuestra el registro real en ambos sistemas.
+
+## Users/LogInUser
+
+| Archivo | Responsabilidad |
+| --- | --- |
+| [LogInUserCommand.cs](Users/LogInUser/LogInUserCommand.cs) | ICommand<AccessTokenResponse> con Email y Password. |
+| [LogInUserCommandHandlerValidator.cs](Users/LogInUser/LogInUserCommandHandlerValidator.cs) | Valida email obligatorio con formato y password no vacia de 5 a 10 caracteres. |
+| [LogInUserCommandHandler.cs](Users/LogInUser/LogInUserCommandHandler.cs) | Invoca IJwtService con credenciales y CancellationToken; convierte su Result fallido en UserErrors.InvalidCredentials. |
+| [AccessTokenResponse.cs](Users/LogInUser/AccessTokenResponse.cs) | Record que devuelve el token bajo la propiedad literal AccessToke; no contiene refresh token ni expiracion. |
+| [IJwtService.cs](Abstractions/Authentication/IJwtService.cs) | GetAccessTokenAsync devuelve Task<Result<string>>; oculta el protocolo HTTP del proveedor. |
+
+El comando no guarda usuarios ni emite o firma JWT localmente. Infrastructure solicita el token a Keycloak. Un fallo tecnico no traducido por IJwtService se propaga; el controlador devuelve 401 para el Result fallido y 200 para el DTO exitoso.
+
+## Users/GetLoggedInUser
+
+| Archivo | Responsabilidad |
+| --- | --- |
+| [GetLoggedInUserQuery.cs](Users/GetLoggedInUser/GetLoggedInUserQuery.cs) | IQuery<UserResponse> sin parametros: la identidad viene del contexto, no del cliente. |
+| [GetLoggedInUserQueryHandler.cs](Users/GetLoggedInUser/GetLoggedInUserQueryHandler.cs) | Obtiene IdentityId de IUserContext y consulta users mediante ISqlConnectionFactory y Dapper. |
+| [UserResponse.cs](Users/GetLoggedInUser/UserResponse.cs) | DTO con Id, FirstName, LastName y Email. |
+| [IUserContext.cs](Abstractions/Authentication/IUserContext.cs) | Expone Guid UserId local y string IdentityId externo sin depender de HttpContext en esta capa. |
+
+El SQL filtra `identity_id = @IdentityId`. QuerySingleAsync exige una unica fila: cero o varias filas generan excepcion, no un Result.NotFound. Se libera la conexion al salir; el CancellationToken recibido no se pasa a esta llamada Dapper. Los atributos de rol/permiso del endpoint de perfil estan en API, no en la query.
 
 
 ## JWT y acceso a los casos de uso
 
-JWT se valida en el pipeline HTTP de API mediante Infrastructure. Application no incorpora un behavior MediatR de autorizacion, un servicio de usuario actual ni lectura de claims.
+JWT se valida en el pipeline HTTP de API mediante Infrastructure. Application no incorpora un behavior MediatR de autorizacion ni lee claims directamente: utiliza IUserContext, implementado en Infrastructure.
 
 Los casos de uso de apartamentos llegan autenticados por su controlador con [Authorize]. Invocar ISender directamente no ejecuta ese atributo. FluentValidation comprueba datos de entrada, no identidad ni permisos.
 
 ReserveBookingCommand sigue aceptando UserId del llamador: buscarlo en el repositorio solo comprueba que existe, no que corresponda al sub del token. CreateReviewCommandHandler recibe BookingId; la fabrica copia el usuario de la reserva, pero no comprueba que sea quien hace la peticion. Los endpoints de reservas y reviews siguen sin [Authorize]. No hay comprobacion de propiedad ni roles en estos handlers.
 
-Los tests con contextos y mocks comprueban casos de uso y pipeline MediatR, no autenticacion HTTP. Consultar la [guia JWT de API](../Bookify.Api/readme.md#autenticacion-jwt) para ejecutar peticiones protegidas y conocer las limitaciones actuales.
+GetBookingQueryHandler si compara BookingResponse.UserId con IUserContext.UserId: devuelve el mismo NotFound si no existe o pertenece a otro usuario. Este control por recurso no se aplica automaticamente a otros handlers. Los tests con mocks comprueban ese comportamiento, no JWT; consultar la [guia de recursos](../Bookify.Infrastructure/Recursos.md).
 
 ## Indice
 
@@ -93,17 +116,24 @@ El proyecto referencia:
 ```text
 Bookify.Application
 |-- Abstractions
+|   |-- Authentication
 |   |-- Behaviors
 |   |-- Data
 |   |-- DateTimeProvider
 |   |-- Email
 |   |-- Messaging
 |-- Apartments
+|   |-- CreateApartment
 |   |-- SearchApartments
 |-- Bookings
 |   |-- GetBooking
 |   |-- ReserveBooking
 |-- Exceptions
+|-- Reviews/CreateReview
+|-- Users
+|   |-- CreateUser
+|   |-- GetLoggedInUser
+|   |-- LogInUser
 |-- DependencyInjection.cs
 |-- Bookify.Application.csproj
 ```
@@ -133,7 +163,7 @@ Versiones declaradas en el archivo de proyecto: Dapper `2.1.79`, FluentValidatio
 
 El alta incorpora [CreateApartmentCommand](Apartments/CreateApartment/CreateApartmentCommand.cs), [CreateApartmentCommandValidator](Apartments/CreateApartment/CreateApartmentCommandValidator.cs) y [CreateApartmentCommandHandler](Apartments/CreateApartment/CreateApartmentCommandHandler.cs), descritos en el apartado siguiente de creacion de apartamentos.
 
-Esta tabla cubre todos los archivos de codigo y configuracion de la capa. Los apartados siguientes explican su funcionamiento; `bin/` y `obj/` contienen salidas generadas.
+Esta tabla describe las abstracciones generales y las lecturas/reservas. Los inventarios de Users/CreateUser, Users/LogInUser y Users/GetLoggedInUser completan los archivos de usuarios y autenticacion. Los apartados Reviews/CreateReview y Apartments/CreateApartment explican sus tres archivos por caso de uso. `bin/` y `obj/` contienen salidas generadas.
 
 | Archivo | Responsabilidad |
 | --- | --- |
@@ -368,8 +398,8 @@ Flujo:
 
 1. Recibe todos los `IValidator<TRequest>` registrados.
 2. Si no hay validadores, llama a `next`.
-3. Si hay validadores, crea un `ValidationContext<TRequest>`.
-4. Ejecuta los validadores.
+3. Crea un ValidationContext<TRequest> independiente para cada validador.
+4. Ejecuta Validate de forma sincronica sin compartir el contexto mutable entre validadores.
 5. Convierte los errores de FluentValidation a `ValidationError`.
 6. Si hay errores, lanza `Bookify.Application.Exceptions.ValidationException`.
 7. Si no hay errores, permite continuar al handler.
@@ -382,7 +412,7 @@ where TRequest : IBaseCommand
 
 Eso explica por que `ReserveBookingCommandValidator` se ejecuta automaticamente antes de `ReserveBookingCommandHandler`.
 
-Nota: actualmente llama a `validator.Validate(context)`, que es validacion sincronica. Si en el futuro se usan reglas asincronas, habria que cambiarlo a `ValidateAsync`.
+Nota: llama a `validator.Validate(new ValidationContext<TRequest>(request))`, de forma sincronica. La instancia por validador evita duplicar errores acumulados. Si se agregan reglas asincronas, habria que usar ValidateAsync.
 
 Llamar directamente a `Handle` omite estos behaviors. Un test o servicio que haga esa llamada no ejecuta automaticamente FluentValidation. La validacion fallida lanza una excepcion; no se convierte en `Result.Failure` por el simple hecho de usar `Result` como respuesta del comando.
 
@@ -704,25 +734,16 @@ Dependencia:
 Flujo:
 
 1. Crea una conexion SQL.
-2. Prepara un `BookingResponse` con `Id = request.BookingId` como objeto de parametros.
+2. Prepara un objeto de parametros con `BookingId = request.BookingId`.
 3. Ejecuta SQL contra la tabla `bookings`.
 4. Mapea el resultado a `BookingResponse`.
-5. Devuelve la respuesta como `Result<BookingResponse>`.
+5. Si no encuentra reserva o BookingResponse.UserId no coincide con IUserContext.UserId, devuelve un fallo BookingErrors.NotFound; en caso contrario devuelve el DTO exitoso.
 
-Si Dapper devuelve `null`, la conversion implicita de `Result<T>` transforma ese valor nulo en un fallo con `Error.NullValue`.
+El handler recibe ISqlConnectionFactory e IUserContext. Usa QueryFirstOrDefaultAsync; la comprobacion explicita evita que una ausencia se convierta en Error.NullValue. No distingue para el consumidor entre reserva inexistente y ajena.
 
-Ese comportamiento presupone que SQL y mapeo consiguen ejecutarse. La implementacion actual presenta estas diferencias, verificadas contra los archivos del proyecto:
+La comprobacion de propiedad se realiza despues de materializar la fila: el filtro SQL solo usa BookingId. Las columnas `amenities_up_change_*` tienen alias `AmenitiesUpChargeAmount` y `AmenitiesUpChargeCurrency` para el DTO. La migracion Change_TableName_And_Field ya renombra Bookings a bookings. Las antiguas discrepancias del parametro y esquema estan corregidas; aplicar solo la migracion inicial no basta.
 
-| Parte | Diferencia actual | Consecuencia |
-| --- | --- | --- |
-| Filtro | SQL usa `@BookingId`, pero el objeto de parametros solo aporta `Id`, no `BookingId`. | No se proporciona el parametro que solicita el filtro. |
-| Tabla | SQL consulta `bookings` sin comillas; la migracion crea `Bookings` con mayuscula. | El identificador no coincide con la tabla entrecomillada que genera EF en PostgreSQL. |
-| Recargo | SQL usa `amenities_up_charge_*`, pero la migracion crea `amenities_up_change_*` desde `AmenitiesUpChange`. | Las columnas solicitadas no existen con ese nombre en el esquema de la migracion inicial. |
-| Cancelacion | El token de `Handle` no se pasa a Dapper. | La llamada SQL no recibe esa cancelacion. |
-
-Por tanto, esta query expresa el contrato de lectura, pero necesita resolver esas incoherencias antes de considerarse validada contra una base de datos. No utiliza `BookingErrors.NotFound` cuando no obtiene una fila.
-
-Las correcciones de `BookingResponse` no modifican los parametros ni los nombres de tabla y columnas del SQL. La referencia para comprobar el esquema es [la migracion inicial](../Bookify.Infrastructure/Migrations/20260909102321_Initial_Database.cs), no solo las convenciones de nombres configuradas en EF.
+El token de Handle no se pasa a Dapper. Si la reserva existe pero IUserContext no dispone del Guid local, su acceso puede lanzar. El handler no sustituye a [Authorize] en HTTP; el controlador de reservas sigue sin ese atributo. Los casos de propietario, ajeno e inexistente se comprueban en Bookify.Application.Tests con SQL simulado.
 
 ## Reviews/CreateReview
 
@@ -734,7 +755,7 @@ El handler consulta la reserva con el token de cancelacion y devuelve `BookingEr
 
 Si tiene exito, registra la resena mediante `IReviewRepository.Add`, espera una unica llamada a `SaveChangesAsync(cancellationToken)` y devuelve el id. Los errores tecnicos se propagan al middleware de Api. El handler no publica por duplicado el evento: la fabrica lo acumula y el contexto real lo publica despues de guardar. No se crea un consumidor del evento sin una reaccion de negocio definida ni se agregan reglas de unicidad o autorizacion.
 
-Las pruebas de `Tests/Bookify.UnitTests/Reviews/CreateReview/CreateReviewTests.cs` usan MSTest, FluentAssertions y mocks estrictos. Cubren reserva inexistente, los cuatro estados no elegibles, validacion, mapeo, evento acumulado, reloj, token, escrituras, fallo de guardado y respuestas HTTP del controlador. No verifican la persistencia ni la publicacion real contra PostgreSQL.
+Las pruebas de `Tests/Bookify.Application.Tests/Reviews/CreateReview/CreateReviewTests.cs` usan MSTest, FluentAssertions y mocks estrictos. Cubren reserva inexistente, estados no elegibles, validacion, mapeo, evento acumulado, reloj, token, escrituras y fallo de guardado. Las respuestas HTTP se prueban en Bookify.Api.Tests; las pruebas de Application no verifican persistencia ni publicacion real contra PostgreSQL.
 
 ## Apartments/CreateApartment
 
@@ -838,7 +859,7 @@ El multi-mapping usa `splitOn: "Country"`: las columnas anteriores rellenan `Apa
 
 El SQL usa `NOT EXISTS` y `ANY(@ActiveBookingStatuses)` con parametros. No ordena, pagina ni limita los resultados. El handler no propaga el token a Dapper. Que un apartamento aparezca disponible no garantiza que siga libre al reservar; el comando debe comprobarlo de nuevo.
 
-El controlador actual expone esta query como `GET /api/apartments?starDate=...&endDate=...`; el parametro HTTP se llama `starDate`, mientras el mensaje interno usa `StartDate`. Ademas, SQL consulta `apartments` y `bookings` sin comillas, pero la migracion inicial crea `Apartments` y `Bookings`. Esa discrepancia afecta tambien a esta lectura, independientemente del multi-mapping del DTO.
+El controlador expone esta query como `GET /api/apartments?startDate=...&endDate=...`. El SQL consulta apartments y bookings, alineados con las tablas despues de aplicar Change_TableName_And_Field. Las pruebas de mapeo simulado no sustituyen ejecutar esta consulta sobre PostgreSQL.
 
 ## Como usar Application desde el host
 
@@ -872,7 +893,7 @@ Result<BookingResponse> result = await sender.Send(
     cancellationToken);
 ```
 
-Estos fragmentos requieren los namespaces de sus casos de uso y los argumentos de entrada correspondientes. La query `GetBookingQuery` conserva las limitaciones descritas arriba.
+Estos fragmentos requieren los namespaces de sus casos de uso y los argumentos de entrada correspondientes. GetBookingQuery tambien necesita un IUserContext con identidad local valida. AddInfrastructure requiere ahora Keycloak:BaseUrl para registrar sus health checks, ademas de la conexion y opciones de autenticacion.
 
 Un metodo que devuelve `Task<Result<Guid>>` puede propagar el resultado de la reserva de esta forma:
 
@@ -935,14 +956,14 @@ Para reaccionar a un evento, implementar `INotificationHandler<TDomainEvent>`. E
 ## Puntos a revisar
 
 - La traduccion de `DbUpdateConcurrencyException` a `ConcurrencyException` ya esta conectada en `ApplicationDbContext`. Debe comprobarse con solicitudes concurrentes contra la base de datos; definir la excepcion no demuestra por si mismo la proteccion de todas las escrituras.
-- `BookingResponse` ya tiene corregidos los importes, monedas y alias de fechas. `GetBookingQueryHandler` mantiene discrepancias de parametro, tabla y columnas de recargo. Ambas queries consultan tablas en minusculas que no coinciden con las de la migracion inicial. Compilar no valida esas consultas SQL.
+- GetBooking ya alinea parametro, tabla y columnas con el esquema migrado. Compilar y probar con conexiones simuladas no valida la ejecucion de todas las consultas sobre PostgreSQL.
 - `ValidationBehavior` usa validacion sincronica. Si se agregan validadores asincronos, deberia adaptarse.
 - Logging no distingue un resultado fallido de negocio de uno exitoso y no registra el objeto excepcion.
 - Las llamadas Dapper y la publicacion actual de eventos no reciben el token del request; `IEmailService` tampoco lo admite.
-- No hay autorizacion ni reglas de fechas futuras en los casos de uso actuales.
+- Existe control de propietario en GetBooking, pero no un behavior general de autorizacion ni controles equivalentes en ReserveBooking/CreateReview. No hay reglas de fechas futuras.
 - El correo es una implementacion vacia y el plazo de diez minutos solo aparece en el texto del mensaje.
-- Existe `CreateReviewCommand` para dejar resenas. No existen comandos para confirmar, cancelar, rechazar, completar reservas ni crear usuarios; esas operaciones siguen implementadas solo en Domain.
-- El host Api esta conectado y existe la migracion inicial. Hay pruebas de arquitectura y pruebas del alta con dependencias simuladas; estas no verifican las consultas Dapper, la persistencia real ni los conflictos contra PostgreSQL.
+- Existen comandos de alta de apartamento, review, usuario, reserva y login. Confirmar, cancelar, rechazar y completar reservas siguen sin comandos ni endpoints.
+- [Bookify.Application.Tests](../Tests/Bookify.Application.Tests/readme.md) comprueba handlers, validadores, behaviors y DI: 138 casos correctos el 22/09/2026. La conexion SQL simulada verifica parametros y mapeo de Dapper, no la validez de SQL ni los conflictos reales contra PostgreSQL.
 
 ## Resumen
 

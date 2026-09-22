@@ -75,6 +75,8 @@ Tras autenticar el JWT, la transformacion:
 
 [AuthorizationService.cs](Authorization/AuthorizationService.cs) realiza la consulta EF y devuelve `UserRolesResponse`, que contiene el GUID local y la lista de `Role`. Se registra como scoped para usar el mismo contexto de datos que su scope.
 
+GetRolesForUserAsync usa FirstAsync sobre la proyeccion de usuarios, no sobre Roles: si el usuario tiene dos roles, devuelve ambos en Roles.ToList(). Si no encuentra usuario, lanza. La consulta de permisos es distinta: aplana todos los roles, usa Distinct y devuelve un HashSet vacio cuando no hay permisos. Revision del 22/09/2026.
+
 [UserContext.cs](Authentication/UserContext.cs) usa `IHttpContextAccessor` y [ClaimsPrincipalExtensions.cs](Authentication/Extensions/ClaimsPrincipalExtensions.cs) para entregar ambos identificadores a Application: `IdentityId` mediante `GetIdentityId()` y `UserId` mediante `GetUserId()`. La comprobacion de propiedad de reservas usa el segundo; se explica en [Recursos.md](Recursos.md).
 
 ## Endpoints que usan roles
@@ -96,7 +98,7 @@ Los requisitos de rol y permiso se combinan: deben satisfacerse ambos. El result
 | JWT valido, usuario local con `Registered` y comprobacion de permiso satisfecha | La accion puede ejecutarse. |
 | JWT valido y requisito de rol o permiso incumplido, sin excepciones durante la evaluacion | `403 Forbidden`. |
 | JWT valido, pero no existe `User.IdentityId` local | `FirstAsync()` lanza una excepcion que el middleware convierte en `500`. |
-| JWT valido, usuario local sin ningun rol | La consulta de permisos puede lanzar por secuencia vacia y terminar en `500`. |
+| JWT valido, usuario local sin ningun rol | Roles y permisos vacios; el requisito de rol/permiso no se satisface y devuelve 403 si no interviene otro error. |
 
 `POST /api/users/register` y `POST /api/users/login` declaran `[AllowAnonymous]`. Las rutas de apartamentos requieren autenticacion por el atributo del controlador, pero no requieren `Registered` especificamente. Reservas y reviews no tienen atributos de autorizacion en el codigo actual.
 
@@ -124,7 +126,7 @@ Los realm roles de Keycloak y el rol local `Registered` no se sincronizan. El to
 - No hay cache de roles ni invalidacion. Los cambios de rol se reflejan cuando una nueva autenticacion transforma el principal, a costa de consultar la base de datos.
 - La asignacion `EmailVerified = true` al registrar una identidad no representa una verificacion real de correo. No debe utilizarse como prueba de identidad.
 - El login usa Resource Owner Password Credentials (`grant_type=password`). Es util para este entorno de aprendizaje, pero no es el flujo recomendado para aplicaciones interactivas modernas; para estas conviene Authorization Code con PKCE.
-- No hay pruebas HTTP de extremo a extremo que demuestren 401, 403 y acceso correcto con `Registered`. Las pruebas de controladores que los invocan directamente no ejecutan `[Authorize]` ni la transformacion de claims.
+- Api.Tests contiene pruebas HTTP de 401/403 y acceso con rol/permiso usando autenticacion simulada; no comprueba JWT ni la transformacion real. Sus 57 casos pasan tras agregar Keycloak:BaseUrl al host de pruebas, como explica [su README](../Tests/Bookify.Api.Tests/readme.md). Las pruebas PostgreSQL de transformacion requieren un servidor de tests independiente.
 
 ## Comprobacion manual
 

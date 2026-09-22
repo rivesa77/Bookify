@@ -4,7 +4,17 @@
 
 El proyecto comprueba los adaptadores de Infrastructure: autenticacion HTTP, claims, politicas de permisos, configuracion de EF Core, repositorios, migraciones, publicacion de eventos y registro de dependencias.
 
-Usa MSTest 4 con el runner VSTest (`Microsoft.NET.Test.Sdk` y `MSTest.TestAdapter`), FluentAssertions y Moq, con las versiones que ya usa Application.Tests. Referencia Infrastructure directamente, sin cargar la API. `InternalsVisibleTo` permite comprobar las clases internas sin hacerlas publicas. Es el unico ajuste del proyecto de produccion; no se cambia su comportamiento.
+Usa MSTest 4 con el runner VSTest (`Microsoft.NET.Test.Sdk` y `MSTest.TestAdapter`), FluentAssertions y Moq, con las versiones que ya usa Application.Tests. Referencia Infrastructure directamente, sin cargar la API. `InternalsVisibleTo` permite comprobar las clases internas sin hacerlas publicas.
+
+## Estado actual
+
+CreateProvider define Keycloak:BaseUrl con https://identity.example. Esto resuelve los dos fallos de DependencyInjectionTests que se producian al construir la Uri del nuevo health check.
+
+La URL ficticia permite registrar servicios sin conectarse a Keycloak. Queda pendiente probar expresamente la ejecucion de los nuevos checks: sus implementaciones Npgsql/URL no usan los mocks de ApplicationDbContext, ISqlConnectionFactory o JwtService y deben sustituirse especificamente para no abrir red.
+
+Las correcciones de permisos se han contrastado con el codigo, no se presentan como una nueva validacion contra un servidor real.
+
+La revision estatica detecta ademas una asercion desactualizada en AuthorizationService_MissingUser_Should_ReportCurrentFirstAsyncFailure: espera excepcion tanto de roles como de permisos. Ahora solo GetRolesForUserAsync lanza; GetPermissionsForUserAsync devuelve conjunto vacio. Al habilitar PostgreSQL, esa expectativa de permisos debe actualizarse. No se ha ejecutado ni corregido ese caso aqui.
 
 ## Ejecucion sin servicios externos
 
@@ -41,7 +51,7 @@ Sin `BOOKIFY_TEST_POSTGRES`, MSTest marca los casos como inconclusos/omitidos: n
 | `Authentication/AuthenticationServiceTests.cs` | JSON exacto de registro, credencial no temporal, extraccion de identidad desde Location, ausencia del header y error de red. Tambien valores iniciales de los DTO y nombre JSON access_token. |
 | `Authentication/ClaimsTests.cs` | ClaimsPrincipalExtensions y UserContext: distincion entre identidad externa y Guid local, claims ausentes, Guid invalido y HttpContext inexistente. |
 | `Authorization/PolicyTests.cs` | HasPermissionAttribute, PermissionRequirement y provider: creacion y reutilizacion de politicas, respeto de politicas configuradas/default/fallback. Salida temprana de usuarios anonimos y de claims ya enriquecidos. |
-| `Authorization/PostgresAuthorizationTests.cs` | AuthorizationService y UserRolesResponse con datos reales, ausencia de usuario, transformacion de claims e idempotencia, permiso requerido, usuario sin permisos y union de permisos de varios roles. Incluye regresiones de seguridad pendientes indicadas abajo. |
+| `Authorization/PostgresAuthorizationTests.cs` | AuthorizationService y UserRolesResponse con datos reales, ausencia de usuario, transformacion de claims e idempotencia, permiso requerido, usuario sin permisos y union de permisos de varios roles. El codigo ya corrige las dos regresiones de permisos descritas abajo. |
 | `Persistence/ApplicationDbContextTests.cs` | SaveChangesAsync: publica despues del guardado, vacia eventos una sola vez, devuelve el resultado, reenvia el token a EF, traduce DbUpdateConcurrencyException y propaga otros fallos. Caracteriza la perdida de eventos pendientes si falla el publicador. |
 | `Persistence/ModelConfigurationTests.cs` | Las siete configuraciones: tablas, claves, longitudes y conversiones de objetos de valor, owned types, relaciones, indices unicos, token xmin, tabla intermedia de permisos y datos iniciales. Evita la regresion de una FK RoleId dentro de permissions. |
 | `Persistence/MigrationTests.cs` | Generacion SQL de avance y retroceso para las cinco migraciones. Verifica tambien que el snapshot no tenga diferencias pendientes con el modelo actual. No ejecuta ese SQL. |
@@ -59,8 +69,9 @@ Los archivos generados Designer y Snapshot se ejercitan al descubrir migraciones
 ## Problemas detectados y limites
 
 
-- `AuthorizationService.GetPermissionsForUserAsync` toma la primera coleccion de permisos con FirstAsync, no la union de todos los roles. La regresion usa dos roles con permisos distintos para que el fallo no dependa del orden devuelto por PostgreSQL. No se ha cambiado la consulta en esta tarea.
-- Los servicios de autorizacion actuales lanzan al no encontrar un usuario; las pruebas caracterizan esa excepcion, no una politica nueva de tratamiento del usuario ausente.
+- PermissionAuthorizationHandler ya usa Contains(requirement.Permission), no Count > 0. Tener un permiso diferente no satisface el requisito.
+- GetPermissionsForUserAsync ya aplana todos los roles y permisos, aplica Distinct, materializa con ToListAsync y construye HashSet. La regresion con varios roles comprueba esa union sin depender del orden.
+- GetRolesForUserAsync conserva FirstAsync sobre el usuario y lanza si no existe; devuelve todos los roles de ese usuario, no solo uno. La consulta de permisos, en cambio, devuelve un conjunto vacio sin usuario/roles/permisos. La transformacion de claims puede fallar antes de llegar al handler de permisos.
 - Los eventos se limpian antes de publicarlos y despues de guardar. Si el publicador falla, los cambios ya estan persistidos y los eventos dejan de estar pendientes. Las pruebas lo hacen visible; no existe garantia de entrega ni outbox en esta implementacion.
 - La simulacion HTTP comprueba el contrato del cliente, no la configuracion de un realm real. No valida credenciales reales, TLS, descubrimiento OIDC ni firmas JWT. Un token con access_token vacio tampoco se rechaza expresamente en el servicio actual.
 - AuthenticationService confia en su delegating handler para rechazar respuestas HTTP de error. La extraccion de Location no valida todos los formatos malformados; los tests no afirman que lo haga.

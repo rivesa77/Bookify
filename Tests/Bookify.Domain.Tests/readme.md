@@ -15,7 +15,6 @@ dotnet test Tests/Bookify.Domain.Tests/Bookify.Domain.Tests.csproj --collect "Co
 
 Las lineas no ejecutadas corresponden a los constructores privados sin parametros de `Apartment`, `Booking`, `Review` y `User`, reservados para materializacion. No se invocan por reflexion para aumentar artificialmente la cobertura: su uso debe comprobarse en pruebas de integracion de persistencia. Una cobertura alta no demuestra que las reglas de negocio esten completas.
 
-La verificacion adicional pasa los 6 casos de API y los 8 de Arquitectura. Application pasa 137 de 138: falla `Validation_Should_AggregateAllValidatorsAndStopNext` porque el ValidationBehavior actual comparte un ValidationContext entre validadores y duplica un error. Se ha reproducido tambien de forma aislada; esta tarea no modifica ni ese behavior ni sus tests.
 
 ## Contenido
 

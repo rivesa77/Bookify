@@ -30,7 +30,7 @@ Invocar directamente un controlador no ejecuta model binding, filtros ni autoriz
 
 ### HTTP y arranque
 
-ApiFactory arranca Program.cs con configuracion ficticia, proporcionada antes de que Program registre Infrastructure. No se modifican variables de entorno globales ni se necesitan los secretos personales del desarrollador.
+ApiFactory arranca Program.cs con configuracion ficticia, incluida BaseUrl, proporcionada antes de que Program registre Infrastructure. No modifica variables de entorno globales; el objetivo es evitar dependencia de secretos personales y servicios externos.
 
 En el entorno Testing se ejecuta la rama no Development. Se sustituye ISender, se usa un esquema de autenticacion exclusivo de tests y se reemplaza la transformacion de claims para evitar consultas a PostgreSQL. La politica users:read exige un claim de prueba; los atributos de autorizacion de los controladores y el middleware ASP.NET Core siguen siendo reales.
 
