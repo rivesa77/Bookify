@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/Postman/">
     <File Path="Postman/Bookify_AddHealthCheck.postman_collection.json" />
+    <File Path="Postman/Bookify_AddReserveBooking.postman_collection.json" />
     <File Path="Postman/Bookify_Apartment_Authentication_Complete.postman_collection.json" />
     <File Path="Postman/Bookify_Authentication.postman_collection.json" />
     <File Path="Postman/Bookify_initial.postman_collection.json" />
