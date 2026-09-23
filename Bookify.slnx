@@ -1,6 +1,10 @@
 <Solution>
   <Folder Name="/Postman/">
+    <File Path="Postman/Bookify_AddHealthCheck.postman_collection.json" />
+    <File Path="Postman/Bookify_Apartment_Authentication_Complete.postman_collection.json" />
+    <File Path="Postman/Bookify_Authentication.postman_collection.json" />
     <File Path="Postman/Bookify_initial.postman_collection.json" />
+    <File Path="Postman/Bookify_Initial_Authentication.postman_collection.json" />
   </Folder>
   <Folder Name="/Scr/">
     <Project Path="Bookify.Api/Bookify.Api.csproj" Id="b10dfa85-6c4d-46eb-8bb9-0a4d304e932a" />
