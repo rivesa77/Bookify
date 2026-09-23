@@ -5,6 +5,7 @@ namespace Bookify.Infrastructure.Tests.Persistence
     using Bookify.Domain.Commons;
     using Bookify.Domain.Reviews;
     using Bookify.Domain.Users;
+    using Bookify.Infrastructure.Outbox;
     using Bookify.Infrastructure.Tests.Support;
     using FluentAssertions;
     using Microsoft.EntityFrameworkCore;
@@ -30,6 +31,7 @@ namespace Bookify.Infrastructure.Tests.Persistence
         [DataRow(typeof(Role), "roles")]
         [DataRow(typeof(Permission), "permissions")]
         [DataRow(typeof(RolePermission), "role_permissions")]
+        [DataRow(typeof(OutboxMessage), "outbox_messages")]
         public void Configuration_Should_UseExpectedTableAndPrimaryKey(Type type, string table)
         {
             // Arrange
@@ -42,6 +44,23 @@ namespace Bookify.Infrastructure.Tests.Persistence
             actual.Should().Be(table);
 
             entity.FindPrimaryKey().Should().NotBeNull();
+        }
+
+        [TestMethod]
+        [DataRow(nameof(OutboxMessage.ProcessedOnUtc))]
+        [DataRow(nameof(OutboxMessage.Error))]
+        public void OutboxProcessingProperties_Should_AllowNull(string propertyName)
+        {
+            // Arrange
+            IEntityType entity = Entity(typeof(OutboxMessage));
+
+            // Act
+            IProperty? property = entity.FindProperty(propertyName);
+
+            // Assert
+            property.Should().NotBeNull();
+
+            property!.IsNullable.Should().BeTrue();
         }
 
         [TestMethod]

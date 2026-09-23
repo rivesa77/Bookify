@@ -11,6 +11,7 @@ namespace Bookify.Infrastructure.Tests
     using Bookify.Domain.Users;
     using Bookify.Infrastructure.Authentication;
     using Bookify.Infrastructure.Authorization;
+    using Bookify.Infrastructure.Outbox;
     using Bookify.Infrastructure.Tests.Support;
     using FluentAssertions;
     using MediatR;
@@ -20,9 +21,11 @@ namespace Bookify.Infrastructure.Tests
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.DependencyInjection;
+    using Microsoft.Extensions.Hosting;
     using Microsoft.Extensions.Options;
     using Microsoft.VisualStudio.TestTools.UnitTesting;
     using Moq;
+    using Quartz;
     using AuthenticationOptions = Bookify.Infrastructure.Authentication.AuthenticationOptions;
     using IAuthenticationService = Bookify.Application.Abstractions.Authentication.IAuthenticationService;
 
@@ -37,6 +40,10 @@ namespace Bookify.Infrastructure.Tests
         private const string Audience = "bookify-api";
 
         private const string Issuer = "https://identity.example/realms/bookify";
+
+        private const int OutboxIntervalInSeconds = 10;
+
+        private const int OutboxBatchSize = 20;
 
         [TestMethod]
         public void AddInfrastructure_Should_ResolveServicesAndRespectScopedLifetimes()
@@ -111,6 +118,29 @@ namespace Bookify.Infrastructure.Tests
         }
 
         [TestMethod]
+        public void AddInfrastructure_Should_RegisterOutboxWorkerAndBindOptions()
+        {
+            // Arrange
+            using ServiceProvider provider = CreateProvider();
+
+            // Act
+            OutboxOptions options = provider.GetRequiredService<IOptions<OutboxOptions>>().Value;
+
+            // Assert
+            options.IntervalInSeconds.Should().Be(OutboxIntervalInSeconds);
+
+            options.BatchSize.Should().Be(OutboxBatchSize);
+
+            registrations.Should().ContainSingle(service =>
+                service.ServiceType == typeof(IHostedService) &&
+                service.ImplementationType != null &&
+                service.ImplementationType.FullName == "Quartz.QuartzHostedService");
+
+            provider.GetServices<IConfigureOptions<QuartzOptions>>()
+                .Should().ContainSingle(setup => setup is ProcessOutboxMessagesJobSetup);
+        }
+
+        [TestMethod]
         [DataRow(true)]
         [DataRow(false)]
         public void JwtSetup_Should_ApplyBothConfigureOverloads(bool named)
@@ -176,12 +206,16 @@ namespace Bookify.Infrastructure.Tests
                 ["Keycloak:AdminClientId"] = keycloak.AdminClientId,
                 ["Keycloak:AdminClientSecret"] = keycloak.AdminClientSecret,
                 ["Keycloak:AuthClientId"] = keycloak.AuthClientId,
-                ["Keycloak:AuthClientSecret"] = keycloak.AuthClientSecret
+                ["Keycloak:AuthClientSecret"] = keycloak.AuthClientSecret,
+                ["Outbox:IntervalInSeconds"] = OutboxIntervalInSeconds.ToString(),
+                ["Outbox:BatchSize"] = OutboxBatchSize.ToString()
             };
 
             registrations.AddLogging();
 
             registrations.AddSingleton(Mock.Of<IPublisher>());
+
+            registrations.AddSingleton(Mock.Of<IHostApplicationLifetime>());
 
             registrations.AddInfrastructure(new ConfigurationBuilder().AddInMemoryCollection(values).Build());
 

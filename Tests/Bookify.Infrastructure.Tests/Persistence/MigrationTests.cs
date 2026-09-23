@@ -22,6 +22,7 @@ namespace Bookify.Infrastructure.Tests.Persistence
         [DataRow("20260916085204_Add_User_IdentityId", "20260916173041_Add_UserRole")]
         [DataRow("20260916173041_Add_UserRole", "20260917064152_Change_TableName_And_Field")]
         [DataRow("20260917064152_Change_TableName_And_Field", "20260917104130_Add_Permission_Tables")]
+        [DataRow("20260917104130_Add_Permission_Tables", "20260923111807_Add_OutBoxMessages")]
         public void Migration_Should_GenerateForwardAndRollbackSql(string previous, string current)
         {
             // Arrange
@@ -41,7 +42,7 @@ namespace Bookify.Infrastructure.Tests.Persistence
         }
 
         [TestMethod]
-        public void Migrations_Should_MatchCurrentModelAndIncludePermissionSchema()
+        public void Migrations_Should_MatchCurrentModelAndIncludePermissionAndOutboxSchema()
         {
             // Arrange
             IMigrator migrator = context.GetService<IMigrator>();
@@ -53,6 +54,8 @@ namespace Bookify.Infrastructure.Tests.Persistence
 
             // Assert
             script.Should().Contain("CREATE TABLE permissions").And.Contain("CREATE TABLE role_permissions");
+
+            script.Should().Contain("CREATE TABLE outbox_messages");
 
             pending.Should().BeFalse();
         }

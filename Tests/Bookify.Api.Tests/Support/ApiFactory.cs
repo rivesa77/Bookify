@@ -5,6 +5,7 @@ namespace Bookify.Api.Tests.Support
     using Bookify.Api.Controllers.Constants;
     using Bookify.Api.Controllers.Users;
     using Bookify.Application.Abstractions.Data;
+    using Bookify.Application.Abstractions.DateTimeProvider;
     using Bookify.Infrastructure;
     using MediatR;
     using Microsoft.AspNetCore.Authentication;
@@ -35,6 +36,10 @@ namespace Bookify.Api.Tests.Support
 
         private ServiceProvider? efServices;
 
+        private static readonly DateTime UtcNow = new(2026, 9, 1, 12, 0, 0, DateTimeKind.Utc);
+
+        private readonly Mock<IDateTimeProvider> mockDateTimeProvider = new(MockBehavior.Strict);
+
         internal ApiFactory(bool development = false)
         {
             this.development = development;
@@ -48,18 +53,14 @@ namespace Bookify.Api.Tests.Support
             builder.ConfigureHostConfiguration(configuration => configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:DataBase"] = "Host=127.0.0.1;Port=1;Database=unused;Username=test;Password=test;Timeout=1",
-
                 ["Authentication:Audience"] = "api-tests",
-
                 ["Authentication:Issuer"] = "https://identity.example/realms/tests",
-
                 ["Authentication:MetadataUrl"] = "https://identity.example/realms/tests/.well-known/openid-configuration",
-
                 ["Keycloak:BaseUrl"] = "https://identity.example",
-
                 ["Keycloak:AdminUrl"] = "https://identity.example/admin/realms/tests/",
-
-                ["Keycloak:TokenUrl"] = "https://identity.example/realms/tests/protocol/openid-connect/token"
+                ["Keycloak:TokenUrl"] = "https://identity.example/realms/tests/protocol/openid-connect/token",
+                ["Outbox:IntervalInSeconds"] = "10",
+                ["Outbox:BatchSize"] = "10",
             }));
 
             return base.CreateHost(builder);
@@ -71,6 +72,16 @@ namespace Bookify.Api.Tests.Support
 
             builder.ConfigureTestServices(services =>
             {
+                // HTTP tests do not run the database-backed outbox worker.
+                ServiceDescriptor? scheduler = services.SingleOrDefault(service =>
+                    service.ServiceType == typeof(IHostedService) &&
+                    service.ImplementationType?.FullName == "Quartz.QuartzHostedService");
+
+                if (scheduler is not null)
+                {
+                    services.Remove(scheduler);
+                }
+
                 if (development)
                 {
                     ConfigureDevelopmentServices(services);
@@ -87,7 +98,9 @@ namespace Bookify.Api.Tests.Support
                 services.AddAuthentication(options =>
                 {
                     options.DefaultAuthenticateScheme = Scheme;
+
                     options.DefaultChallengeScheme = Scheme;
+
                     options.DefaultForbidScheme = Scheme;
                 }).AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(Scheme, _ => { });
 
@@ -135,7 +148,10 @@ namespace Bookify.Api.Tests.Support
 
             services.RemoveAll<ApplicationDbContext>();
 
-            services.AddScoped(_ => new ApplicationDbContext(options, Mock.Of<IPublisher>()));
+            services.AddScoped(_ => new ApplicationDbContext(
+                options,
+                Mock.Of<IPublisher>(),
+                mockDateTimeProvider.Object));
 
             services.RemoveAll<ISqlConnectionFactory>();
 

@@ -18,6 +18,14 @@ dotnet test Tests/Bookify.Api.Tests/Bookify.Api.Tests.csproj --collect "Code Cov
 
 Los tests no necesitan Docker, PostgreSQL ni Keycloak. Las categorias disponibles son Controller, Http, Middleware, Extensions y Authentication. La ultima conserva la prueba previa del adaptador de registro de Infrastructure, cuya bateria principal esta en Infrastructure.Tests.
 
+## Ajuste a Outbox y Quartz
+
+Solventados errores tras incorporar Quartz que procedian del arranque del planificador dentro de los hosts efimeros; aparecian errores del scheduler y LoggerFactory ya liberado.
+
+ApiFactory conserva la configuracion Outbox de prueba y el constructor actualizado de ApplicationDbContext con IDateTimeProvider. En ConfigureTestServices retira exclusivamente el IHostedService cuya implementacion es Quartz.QuartzHostedService, sin eliminar los demas servicios alojados. Se identifica por nombre completo porque ese tipo es interno en el paquete actual.
+
+Los tests HTTP no deben ejecutar el procesador SQL contra una base real ni depender de temporizadores. Este aislamiento no valida el funcionamiento del job: las rutas, autenticacion de prueba, middleware, migraciones simuladas y sembrado conservan sus comprobaciones anteriores.
+
 ## Tipos de pruebas
 
 ### Controladores

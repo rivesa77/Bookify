@@ -1,6 +1,7 @@
 namespace Bookify.Api.Tests.Extensions
 {
     using Bookify.Api.Extensions;
+    using Bookify.Application.Abstractions.DateTimeProvider;
     using Bookify.Infrastructure;
     using FluentAssertions;
     using MediatR;
@@ -14,6 +15,8 @@ namespace Bookify.Api.Tests.Extensions
     [TestCategory("Extensions")]
     public sealed class ApplicationBuilderExtensionsTests
     {
+        private readonly Mock<IDateTimeProvider> mockDateTimeProvider = new(MockBehavior.Strict);
+
         private readonly Mock<IMigrator> migrator = new(MockBehavior.Strict);
 
         private ServiceProvider efServices = null!;
@@ -21,6 +24,8 @@ namespace Bookify.Api.Tests.Extensions
         private ServiceProvider appServices = null!;
 
         private ApplicationDbContext? resolvedContext;
+
+        private static readonly DateTime UtcNow = new(2026, 9, 1, 12, 0, 0, DateTimeKind.Utc);
 
         [TestInitialize]
         public void Initialize()
@@ -40,7 +45,14 @@ namespace Bookify.Api.Tests.Extensions
 
             ServiceCollection registrations = new();
 
-            registrations.AddScoped(_ => resolvedContext = new ApplicationDbContext(options, Mock.Of<IPublisher>()));
+            mockDateTimeProvider
+                .Setup(m => m.UtcNow)
+                .Returns(UtcNow);
+
+            registrations.AddScoped(_ => resolvedContext = new ApplicationDbContext(
+                options,
+                Mock.Of<IPublisher>(),
+                mockDateTimeProvider.Object));
 
             appServices = registrations.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
         }

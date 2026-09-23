@@ -1,5 +1,6 @@
 namespace Bookify.Infrastructure.Tests.Support
 {
+    using Bookify.Application.Abstractions.DateTimeProvider;
     using Bookify.Domain.Apartments;
     using Bookify.Domain.Bookings;
     using Bookify.Domain.Commons;
@@ -48,7 +49,16 @@ namespace Bookify.Infrastructure.Tests.Support
                 options.AddInterceptors(interceptor);
             }
 
-            return new ApplicationDbContext(options.Options, publisher ?? Mock.Of<IPublisher>());
+            Mock<IDateTimeProvider> mockDateTimeProvider = new(MockBehavior.Strict);
+
+            mockDateTimeProvider
+                .Setup(m => m.UtcNow)
+                .Returns(UtcNow);
+
+            return new ApplicationDbContext(
+                options.Options,
+                publisher ?? Mock.Of<IPublisher>(),
+                mockDateTimeProvider.Object);
         }
 
         internal static User CreateUser()
