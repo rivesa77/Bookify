@@ -50,6 +50,8 @@ La prueba con dos validadores encontro que `ValidationBehavior` reutilizaba un `
 
 ## Limites de estas pruebas
 
+El cambio a Outbox no convierte estas pruebas en tests del procesador: IUnitOfWork sigue simulado, y comprobar el evento acumulado o invocar directamente BookingReservedDomainEventHandler no verifica su persistencia ni entrega diferida. Esa cobertura esta en [Infrastructure.Tests](../Bookify.Infrastructure.Tests/readme.md#pruebas-outbox).
+
 - No se ejecutan sentencias SQL contra PostgreSQL. Hay que complementar estas pruebas con integracion para esquema, alias, sintaxis, filtros de disponibilidad y concurrencia real.
 - Se caracteriza el comportamiento actual: `GetLoggedInUserQueryHandler` lanza si `QuerySingleAsync` recibe cero o multiples filas; `LoggingBehavior` registra finalizacion exitosa incluso para un `Result` fallido sin excepcion.
 - Los tests del recurso ejercitan la comparacion de propietario en Application. No ejecutan validacion JWT, transformacion de claims ni atributos HTTP de autorizacion.

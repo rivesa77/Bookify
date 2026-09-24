@@ -41,6 +41,8 @@ Los eventos se ejercitan al ejecutar las operaciones que los producen y comproba
 
 ## Alcance y limitaciones
 
+Outbox y Quartz no agregan dependencias a este proyecto. Los tests comprueban la produccion, copia y limpieza de eventos en las entidades; su serializacion, almacenamiento y publicacion posterior se verifican en [Infrastructure.Tests](../Bookify.Infrastructure.Tests/readme.md#pruebas-outbox).
+
 - Domain permite DateRange de cero dias; la exigencia de fecha final posterior pertenece al validador de Application. Complete comprueba el estado, pero no exige que haya terminado la estancia. Cancel permite todo el dia de entrada.
 - Los records de texto no validan longitud, formato o contenido; por ejemplo, Email no comprueba que el texto sea un correo. Ademas, los init publicos de algunos objetos de valor pueden permitir saltarse sus factorias. Esta bateria no afirma que esas invariantes esten protegidas.
 - Las colecciones publicas de amenities y permisos no son inmutables. Las pruebas de aislamiento de roles usan instancias locales, nunca cambian Role.Registered.

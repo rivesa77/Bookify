@@ -2,7 +2,7 @@
 
 Este proyecto contiene la capa de infraestructura de Bookify. Su responsabilidad es implementar detalles tecnicos que las capas internas necesitan, pero no deben conocer directamente.
 
-Aqui viven las implementaciones de persistencia, acceso SQL, reloj, correo, autenticacion, autorizacion y comprobaciones de salud. Revision: 22 de septiembre de 2026.
+Aqui viven las implementaciones de persistencia, acceso SQL, reloj, correo, autenticacion, autorizacion, comprobaciones de salud y Outbox con Quartz. Revision: 23 de septiembre de 2026.
 
 [Guia de la solucion](../readme.md) | [Domain](../Bookify.Domain/readme.md) | [Application](../Bookify.Application/readme.md) | [Api](../Bookify.Api/readme.md)
 
@@ -68,6 +68,7 @@ Infrastructure registra autenticacion; los atributos de API deciden donde exigir
 - [Login e identidad actual](#login-y-contexto-de-usuario)
 - [Roles y permisos](#autorizacion-local)
 - [Health checks](#health-checks)
+- [Outbox y Quartz](#outbox-y-quartz)
 - [Contexto y eventos](#applicationdbcontext)
 - [Mapeo de entidades](#configurations)
 - [Migraciones y esquema](#migrations)
@@ -130,6 +131,7 @@ Bookify.Infrastructure
 |-- Data
 |-- Email
 |-- Migrations
+|-- Outbox
 |-- Repositories
 |-- Bookify.Infrastructure.csproj
 ```
@@ -168,6 +170,8 @@ Las versiones declaradas son `EFCore.NamingConventions` 10.0.1, `Microsoft.Exten
 
 Los health checks agregan `AspNetCore.HealthChecks.NpgSql` 9.0.0 y `AspNetCore.HealthChecks.Uris` 9.0.0. La serializacion HTTP pertenece a API mediante UI.Client, no a esta biblioteca.
 
+`Quartz.Extensions.Hosting` 3.6.3 integra el scheduler en el host. Outbox usa Newtonsoft.Json para serializar tipos de eventos y Dapper para seleccionar y actualizar mensajes; estas dependencias estan disponibles transitivamente en el proyecto actual.
+
 ## Inventario de archivos
 
 | Archivo | Responsabilidad |
@@ -187,6 +191,7 @@ Los health checks agregan `AspNetCore.HealthChecks.NpgSql` 9.0.0 y `AspNetCore.H
 | [Configurations/RoleConfiguration.cs](Configurations/RoleConfiguration.cs) | Relaciones muchos-a-muchos de roles con usuarios y permisos, y semilla Registered. |
 | [Configurations/PermissionConfiguration.cs](Configurations/PermissionConfiguration.cs) | permissions, Name obligatorio y semilla users:read. |
 | [Configurations/RolePermissionConfiguration.cs](Configurations/RolePermissionConfiguration.cs) | role_permissions, clave compuesta y asignacion inicial de permiso al rol. |
+| [Configurations/OutboxMessageConfiguration.cs](Configurations/OutboxMessageConfiguration.cs) | Tabla Outbox, clave y contenido json; ver el inventario de las cinco clases en [Outbox y Quartz](#outbox-y-quartz). |
 | [Data/SqlConnectionFactory.cs](Data/SqlConnectionFactory.cs) | Construye y abre conexiones Npgsql para lecturas. |
 | [Data/DateOnlyTypeHandler.cs](Data/DateOnlyTypeHandler.cs) | Adaptacion entre fechas SQL y `DateOnly` para Dapper. |
 | [Clock/DateTimeProvider.cs](Clock/DateTimeProvider.cs) | Acceso al reloj UTC del sistema. |
@@ -252,6 +257,7 @@ Tambien registra:
 - IHttpContextAccessor e IUserContext, clientes HTTP de registro/login y opciones JWT/Keycloak.
 - Transformacion de claims, proveedor de policies y handler de permisos.
 - Health checks de PostgreSQL y URL base de Keycloak.
+- Opciones Outbox, scheduler Quartz, servicio alojado y configuracion del job periodico.
 
 ### Tiempos de vida y dependencias compartidas
 
@@ -361,9 +367,9 @@ Responsabilidades:
 - Representar la sesion de trabajo con la base de datos.
 - Aplicar configuraciones de entidades.
 - Guardar cambios.
-- Publicar eventos de dominio despues de guardar.
+- Preparar mensajes Outbox antes de guardar y persistirlos junto con los cambios del negocio.
 
-El constructor recibe `DbContextOptions` y `IPublisher`. No declara propiedades `DbSet<T>`: los repositorios acceden mediante `Set<TEntity>()` y las configuraciones incorporan las entidades al modelo.
+El constructor recibe `DbContextOptions`, `IPublisher` e `IDateTimeProvider`. El reloj fija OccurredOnUtc al convertir cada evento; IPublisher sigue siendo una dependencia del constructor, pero ya no se utiliza para publicar desde el contexto. No declara propiedades `DbSet<T>`: se accede mediante `Set<TEntity>()` y las configuraciones incorporan las entidades al modelo.
 
 ### OnModelCreating
 
@@ -383,13 +389,13 @@ Esto detecta clases como:
 
 ### SaveChangesAsync
 
-Sobrescribe `SaveChangesAsync` para agregar comportamiento despues del guardado.
+Sobrescribe `SaveChangesAsync` para preparar Outbox antes del guardado.
 
 Flujo:
 
-1. Ejecuta `base.SaveChangesAsync`.
-2. Si el guardado es exitoso, publica eventos de dominio.
-3. Devuelve el entero de `base.SaveChangesAsync`, que representa las entradas de estado escritas por EF, no un identificador de reserva.
+1. Ejecuta `AddDomainEventAsOutboxMessageAsync`: obtiene y limpia los eventos de las entidades seguidas, los serializa y agrega los mensajes al contexto.
+2. Ejecuta `base.SaveChangesAsync(cancellationToken)` para persistir cambios del negocio y mensajes en la misma operacion transaccional de EF.
+3. Devuelve el entero de `base.SaveChangesAsync`, que incluye las entradas Outbox escritas; no es un identificador de reserva ni solo un recuento de agregados.
 4. Si se recibe `DbUpdateConcurrencyException`, la convierte en `Bookify.Application.Exceptions.ConcurrencyException`, conservandola como `InnerException`.
 
 La conversion ya esta implementada:
@@ -401,35 +407,64 @@ catch (DbUpdateConcurrencyException ex)
 }
 ```
 
-Application puede capturar su propio contrato de excepcion sin conocer EF Core. Los errores que no son de ese tipo se propagan. El `try` incluye tanto el guardado como la publicacion de eventos.
+Application puede capturar su propio contrato de excepcion sin conocer EF Core. Los errores que no son de ese tipo se propagan. El `try` incluye la preparacion de Outbox y el guardado, no la publicacion posterior del job.
 
-El comportamiento adicional esta en la sobrecarga `SaveChangesAsync(CancellationToken)` utilizada por `IUnitOfWork`. No hay una sobrescritura de `SaveChanges()` ni de `SaveChangesAsync(bool, CancellationToken)` en esta clase; un consumidor que use esas otras entradas no debe dar por aplicada esta publicacion personalizada.
+El comportamiento adicional esta en la sobrecarga `SaveChangesAsync(CancellationToken)` utilizada por `IUnitOfWork`. No hay una sobrescritura de `SaveChanges()` ni de `SaveChangesAsync(bool, CancellationToken)`; esas otras entradas no ejecutan la preparacion personalizada de Outbox.
 
-### Publicacion de eventos de dominio
+### Preparacion de eventos de dominio
 
-`PublishDomainEventAsync`:
+`AddDomainEventAsOutboxMessageAsync` es sincrono pese a su sufijo. Recorre las entradas Entity del ChangeTracker, copia sus eventos y limpia las listas. Cada evento produce un OutboxMessage con Guid nuevo, fecha del reloj, nombre corto del tipo y JSON con `TypeNameHandling.All`. Finalmente llama a AddRange, sin publicar notificaciones.
 
-1. Busca todas las entradas del ChangeTracker que son `Entity`.
-2. Obtiene sus eventos con `GetDomainEvents`.
-3. Limpia los eventos con `ClearDomainEvent`.
-4. Publica cada evento con `IPublisher` de MediatR.
+Si falla el guardado de EF, los mensajes ya agregados siguen Added en ese contexto y los eventos de las entidades ya estan limpios. Reintentar el mismo contexto no crea otra copia de esos eventos; eso no sustituye la resolucion de conflictos ni garantiza recuperacion si se descarta el contexto. Un fallo durante la preparacion/serializacion tambien puede dejar eventos limpiados antes de agregar mensajes.
 
-Esto conecta el dominio con handlers de eventos ubicados en Application.
+## Outbox y Quartz
 
-Ejemplo:
+Outbox desacopla el guardado del negocio de sus consumidores. La tabla es duradera; el scheduler vive dentro del proceso API y no es un servicio Docker separado. Si la API esta detenida, no procesa mensajes; los pendientes persistidos pueden seleccionarse al volver a arrancar.
 
-```text
-Booking.Reserve levanta BookingReservedDomainEvent
-SaveChangesAsync guarda en base de datos
-ApplicationDbContext publica el evento
-BookingReservedDomainEventHandler envia email
+### Clases y configuracion
+
+| Archivo | Funcionamiento |
+| --- | --- |
+| [Outbox/OutboxMessage.cs](Outbox/OutboxMessage.cs) | Mensaje persistente: Id, OccurredOnUtc, Type y Content se reciben en el constructor; ProcessedOnUtc y Error empiezan null. Sus setters son privados. La fecha corresponde a la conversion en el contexto, no necesariamente al instante exacto de la operacion de dominio. |
+| [Configurations/OutboxMessageConfiguration.cs](Configurations/OutboxMessageConfiguration.cs) | Mapea outbox_messages, su clave Id y Content como json. Las convenciones snake_case y la nulabilidad CLR producen processed_on_utc y error opcionales. No configura indice para pendientes ni limpieza de mensajes. |
+| [Outbox/OutboxMessageResponse.cs](Outbox/OutboxMessageResponse.cs) | Record interno con Id y Content. Dapper materializa esta proyeccion de lectura; el procesador usa los metadatos del JSON para recuperar el evento, no la columna Type. |
+| [Outbox/OutboxOptions.cs](Outbox/OutboxOptions.cs) | IntervalInSeconds controla la frecuencia; BatchSize limita la seleccion. Ambas propiedades init son int, con valor predeterminado cero. No hay validacion de opciones ni ValidateOnStart. |
+| [Outbox/ProcessOutboxMessagesJobSetup.cs](Outbox/ProcessOutboxMessagesJobSetup.cs) | IConfigureOptions de QuartzOptions: registra ProcessOutboxMessagesJob con ese mismo nombre como identidad y un trigger asociado, con intervalo configurado y RepeatForever. |
+| [Outbox/ProcessOutboxMessagesJob.cs](Outbox/ProcessOutboxMessagesJob.cs) | IJob interno con DisallowConcurrentExecution. Abre conexion y transaccion, selecciona pendientes, publica con IPublisher, actualiza cada resultado y confirma el lote. Usa el reloj inyectado y registra inicio, fin y errores de publicacion. |
+
+`DependencyInjection.AddBackgroundJobs` enlaza la seccion Outbox, registra Quartz con la factoria de DI y agrega su servicio alojado con `WaitForJobsToComplete = true`. Tambien registra ProcessOutboxMessagesJobSetup. No configura un almacen persistente de jobs Quartz ni clustering; la persistencia de los eventos es la tabla propia Outbox.
+
+Development aporta:
+
+```json
+"Outbox": {
+  "IntervalInSeconds": 10,
+  "BatchSize": 10
+}
 ```
 
-Los eventos se copian y se limpian de **todas** las entidades seguidas antes de empezar el bucle de publicacion. Se publican uno a uno y cada llamada a `Publish` se espera. Esto no es una cola ni un proceso independiente. Los eventos que aparecieran durante los handlers no se agregan a la instantanea que ya se esta recorriendo.
+En otros entornos hay que aportar estos valores, por ejemplo `Outbox__IntervalInSeconds=10` y `Outbox__BatchSize=10`. appsettings.json no define la seccion. Utilizar valores positivos; la clase no los valida y BatchSize=0 no selecciona mensajes.
 
-Si falla un handler despues de guardar, en el flujo actual los datos ya estan persistidos y las listas de eventos ya fueron limpiadas. Los eventos posteriores del bucle no se publican, y no hay almacenamiento duradero ni reintentos. Un outbox seria una ampliacion para resolver esa entrega, no una funcionalidad existente.
+### Procesamiento del lote
 
-El token del request se pasa a `base.SaveChangesAsync`, pero `PublishDomainEventAsync` no recibe token y llama a `publisher.Publish(domainEvent)` sin proporcionarlo.
+1. SqlConnectionFactory abre PostgreSQL y el job inicia una transaccion.
+2. Dapper selecciona id/content donde processed_on_utc es null, ordena por occurred_on_utc, limita por BatchSize y usa FOR UPDATE.
+3. Por cada fila, Newtonsoft.Json reconstruye IDomainEvent con TypeNameHandling.All y el job espera a IPublisher.Publish con el token de Quartz, no con el de la peticion HTTP original.
+4. Si deserializar o publicar lanza una excepcion, la captura, la registra y conserva su ToString como Error. Continua con el siguiente mensaje tras actualizar el actual.
+5. Actualiza processed_on_utc con el reloj y error con null o el texto de excepcion, usando la misma transaccion.
+6. Confirma la transaccion al terminar el lote y libera conexion/transaccion.
+
+### Garantias y limites
+
+- El guardado EF une cambios del negocio y mensajes; no une PostgreSQL con Keycloak, correo u otros efectos externos.
+- Los fallos de publicacion, incluida OperationCanceledException, se marcan procesados con error. No se vuelven a seleccionar automaticamente; no hay backoff ni cola separada de fallos.
+- Un fallo SQL de lectura, actualizacion o commit se propaga. La transaccion no incluye los efectos externos de handlers ya ejecutados: pueden repetirse si los mensajes siguen pendientes. Los consumidores deben ser idempotentes; no se garantiza exactamente una entrega.
+- DisallowConcurrentExecution evita solapamientos de la misma identidad de job dentro del scheduler. No equivale a coordinacion global entre varias API independientes. El SQL no usa SKIP LOCKED y no hay pruebas de multiples procesadores concurrentes.
+- Las llamadas Dapper actuales no reciben el token de cancelacion. WaitForJobsToComplete solicita esperar al trabajo en curso durante un apagado ordenado, no evita interrupciones forzadas.
+- TypeNameHandling.All guarda informacion de tipos .NET: los cambios de nombres/ensamblados deben considerar mensajes pendientes. El JSON debe proceder de una fuente confiable; no hay un binder restrictivo configurado.
+- Los mensajes procesados se conservan; no hay politica de retencion ni endpoint de inspeccion/reintento. Un evento sin handlers puede terminar correctamente sin efectos.
+
+Los [tests Outbox](../Tests/Bookify.Infrastructure.Tests/readme.md#pruebas-outbox) separan 20 casos unitarios sin servidor y cuatro de integracion PostgreSQL. Los primeros no demuestran bloqueos ni atomicidad SQL real; los segundos requieren BOOKIFY_TEST_POSTGRES.
 
 ## Configurations
 
@@ -530,7 +565,7 @@ Esa proteccion requiere que el indice se haya creado realmente en la base de dat
 
 ## Migrations
 
-Infrastructure contiene cinco migraciones. Las herramientas EF construyen el modelo desde ApplicationDbContext y sus configuraciones; crear archivos y aplicarlos a PostgreSQL son pasos distintos.
+Infrastructure contiene seis migraciones. Las herramientas EF construyen el modelo desde ApplicationDbContext y sus configuraciones; crear archivos y aplicarlos a PostgreSQL son pasos distintos.
 
 | Migracion | Cambio |
 | --- | --- |
@@ -539,8 +574,9 @@ Infrastructure contiene cinco migraciones. Las herramientas EF construyen el mod
 | [20260916173041_Add_UserRole.cs](Migrations/20260916173041_Add_UserRole.cs) | Roles, tabla de union role_user y semilla Registered. |
 | [20260917064152_Change_TableName_And_Field.cs](Migrations/20260917064152_Change_TableName_And_Field.cs) | Tablas en minusculas, identity_id e indice unico externo en sustitucion del indice sobre Id. |
 | [20260917104130_Add_Permission_Tables.cs](Migrations/20260917104130_Add_Permission_Tables.cs) | permissions y role_permissions; semilla users:read y asignacion a Registered. |
+| [20260923111807_Add_OutBoxMessages.cs](Migrations/20260923111807_Add_OutBoxMessages.cs) | outbox_messages: id, occurred_on_utc, type, content json y processed_on_utc/error anulables. Down elimina la tabla. |
 
-Cada archivo tiene un Designer con BuildTargetModel que conserva su modelo destino. ApplicationDbContextModelSnapshot contiene el ultimo modelo. Los health checks no cambian entidades ni requieren una sexta migracion.
+Cada archivo tiene un Designer con BuildTargetModel que conserva su modelo destino. ApplicationDbContextModelSnapshot contiene el ultimo modelo, incluido Outbox. Los health checks no modifican el esquema; la sexta migracion corresponde a Outbox. Si se aplico una version anterior de una migracion despues regenerada, editar el archivo no modifica automaticamente esa base: comprobar su historial y generar la correccion adecuada, sin borrar datos para sincronizarla.
 
 ### Constructores y creacion del modelo
 
@@ -623,7 +659,7 @@ Al generar migraciones, las herramientas validan el modelo de EF; eso no ejecuta
 
 Ademas de la direccion, muchos campos de referencia e importes owned aceptan `NULL` porque Domain tiene nullable deshabilitado y faltan restricciones explicitas. Los constructores privados solucionan la construccion del modelo, pero no corrigen esas reglas de obligatoriedad. Tampoco hay restricciones de base de datos de longitud exacta del nombre, rango de puntuacion o exclusion de reservas solapadas.
 
-El esquema actual, tras las cinco migraciones, usa tablas en minusculas. GetBooking consulta amenities_up_change_* con los alias del DTO y aporta BookingId al filtro: esas diferencias historicas estan corregidas. Los limites de nulabilidad y la ausencia de restricciones de exclusion o longitud exacta siguen siendo cuestiones distintas.
+El esquema actual, tras las seis migraciones, usa tablas en minusculas e incluye outbox_messages. GetBooking consulta amenities_up_change_* con los alias del DTO y aporta BookingId al filtro: esas diferencias historicas estan corregidas. Los limites de nulabilidad y la ausencia de restricciones de exclusion o longitud exacta siguen siendo cuestiones distintas.
 
 ## Repositories
 
@@ -689,7 +725,7 @@ No agrega metodos propios porque hereda `GetByIdAsync` y `Add` de la base generi
 
 [ReviewRepository.cs](Repositories/ReviewRepository.cs) es una clase interna sellada que hereda `Repository<Review>` e implementa `IReviewRepository`. Su constructor recibe el contexto scoped. El `Add` heredado registra la resena en EF; el handler confirma la escritura mediante `IUnitOfWork`, que resuelve el mismo contexto. `AddInfrastructure` registra `IReviewRepository -> ReviewRepository` como scoped junto a los otros repositorios.
 
-Reutiliza ReviewConfiguration y la tabla reviews (Reviews en la migracion inicial, renombrada posteriormente). El contexto publica los eventos acumulados despues del guardado, incluido ReviewCreatedDomainEvent, que todavia no tiene consumidor. No se agregan restricciones de unicidad por reserva.
+Reutiliza ReviewConfiguration y la tabla reviews (Reviews en la migracion inicial, renombrada posteriormente). El contexto persiste los eventos acumulados en Outbox y Quartz los publica despues, incluido ReviewCreatedDomainEvent, que todavia no tiene consumidor. No se agregan restricciones de unicidad por reserva.
 
 ### UserRepository
 
@@ -847,7 +883,8 @@ ReserveBookingCommandHandler
   -> bookingRepository.Add
   -> unitOfWork.SaveChangesAsync
   -> ApplicationDbContext.SaveChangesAsync
-  -> PublishDomainEventAsync
+  -> Preparacion de Outbox y guardado EF de entidades/mensajes
+  -> Quartz publica los pendientes en una ejecucion independiente
 ```
 
 EF Core se usa para trabajar con entidades completas del dominio y guardar cambios.
@@ -895,7 +932,7 @@ Por tanto, al reservar, no solo se inserta una booking; tambien se actualiza el 
 6. `ApplicationDbContext` la traduce a `ConcurrencyException`.
 7. `ReserveBookingCommandHandler` la captura y devuelve `Result.Failure<Guid>(BookingErrors.Overlap)`.
 
-La insercion y actualizacion pendientes se guardan en una misma llamada a `SaveChangesAsync`. En la transaccion habitual de ese guardado relacional, un fallo revierte los cambios de esa llamada. Los eventos se publican despues y no participan de esa transaccion de base de datos.
+La insercion, actualizacion y mensajes Outbox pendientes se guardan en una misma llamada a `SaveChangesAsync`. En la transaccion habitual de ese guardado relacional, un fallo revierte los cambios de esa llamada. La publicacion por Quartz ocurre despues: sus efectos externos no participan de la transaccion de guardado.
 
 ### Alcance de la proteccion
 
@@ -909,16 +946,16 @@ La traduccion de excepciones ya esta conectada; las garantias de concurrencia y 
 
 ## Puntos a revisar
 
-- Existen cinco migraciones y el Snapshot final con tablas en minusculas. Muchos campos siguen siendo nullable y Address opcional; los archivos no prueban la aplicacion a una base concreta.
+- Existen seis migraciones y el Snapshot final con tablas en minusculas y Outbox. Muchos campos siguen siendo nullable y Address opcional; los archivos no prueban la aplicacion a una base concreta.
 - `EmailService` no envia emails reales todavia.
-- `ApplicationDbContext` publica eventos despues de guardar. Si un handler de evento falla, los datos ya fueron persistidos. Para escenarios criticos podria evaluarse un outbox pattern.
+- `ApplicationDbContext` persiste Outbox y Quartz publica despues. Faltan reintentos de errores de publicacion, retencion y verificacion de multiples procesadores; los consumidores deben considerar duplicados.
 - `BookingRepository.IsOverlappingAsync` reduce el riesgo de reservas solapadas, pero por si solo no garantiza atomicidad ante concurrencia. La concurrencia optimista sobre `Apartment` ayuda, aunque para maxima robustez conviene apoyarse tambien en restricciones de base de datos.
 - El nombre de la cadena de conexion es `DataBase`. Conviene mantenerlo consistente en los archivos de configuracion.
 - Las consultas SQL viven en Application. GetBooking ya alinea nombres y parametros con el esquema; sigue siendo necesario probar SQL y materializacion contra PostgreSQL.
 - Las fabricas de `Name` y `Rating` pueden rechazar datos al materializarlos. Tener una configuracion EF y una compilacion correcta no demuestra que todos los datos existentes sean validos ni que las entidades se materialicen correctamente.
 - `DateOnlyTypeHandler.Parse` presupone un `DateTime`; conviene probar el contrato con el proveedor configurado.
 - [Infrastructure.Tests](../Tests/Bookify.Infrastructure.Tests/readme.md) incluye pruebas sin red y pruebas PostgreSQL opcionales con bases aisladas. Estas ultimas requieren BOOKIFY_TEST_POSTGRES; no se han ejecutado en esta revision documental.
-- El 22/09/2026, el grupo sin red pasa sus 82 casos tras agregar Keycloak:BaseUrl ficticia a DependencyInjectionTests. Se corrige el arranque del contenedor DI; no se comprueba conectividad externa ni la ejecucion de /health.
+- El grupo sin red pasa sus 108 casos, incluidos 20 unitarios de Outbox. Los 26 casos PostgreSQL quedan omitidos sin BOOKIFY_TEST_POSTGRES. No se comprueba conectividad externa ni la ejecucion de /health.
 
 ## Resumen
 

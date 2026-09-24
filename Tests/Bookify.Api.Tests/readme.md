@@ -26,6 +26,8 @@ ApiFactory conserva la configuracion Outbox de prueba y el constructor actualiza
 
 Los tests HTTP no deben ejecutar el procesador SQL contra una base real ni depender de temporizadores. Este aislamiento no valida el funcionamiento del job: las rutas, autenticacion de prueba, middleware, migraciones simuladas y sembrado conservan sus comprobaciones anteriores.
 
+[Infrastructure.Tests](../Bookify.Infrastructure.Tests/readme.md#pruebas-outbox) contiene ahora 20 casos unitarios para las cinco clases Outbox y cuatro casos PostgreSQL opcionales. Los tests del setup inspeccionan la configuracion sin iniciar Quartz; no equivalen a una prueba del scheduler alojado durante el ciclo de vida real de la API.
+
 ## Tipos de pruebas
 
 ### Controladores

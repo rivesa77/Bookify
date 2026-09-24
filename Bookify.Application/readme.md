@@ -4,7 +4,7 @@ Este proyecto contiene la capa de aplicacion de Bookify. Su responsabilidad es e
 
 Application no configura EF Core, no construye conexiones Npgsql ni implementa el envio de correo. Define contratos que Infrastructure implementa. Sin embargo, sus queries contienen SQL, nombres de tablas y columnas, e incluso sintaxis de PostgreSQL como `ANY`. La construccion de la conexion esta abstraida, pero el esquema y el dialecto de las lecturas siguen siendo dependencias de esta capa.
 
-Esta guia distingue el comportamiento implementado de las limitaciones pendientes. `Bookify.Api/Program.cs` registra Application e Infrastructure, y sus controladores invocan los casos de uso con `ISender`. En Development, la API aplica migraciones y sembrado al arrancar. Revision: 22 de septiembre de 2026. El nuevo `/health` pertenece a API/Infrastructure: no incorpora un comando ni un handler a Application.
+Esta guia distingue el comportamiento implementado de las limitaciones pendientes. `Bookify.Api/Program.cs` registra Application e Infrastructure, y sus controladores invocan los casos de uso con `ISender`. En Development, la API aplica migraciones y sembrado al arrancar. Revision: 23 de septiembre de 2026. `/health` y la persistencia/procesamiento Outbox pertenecen a API/Infrastructure: Application conserva sus comandos y handlers de eventos sin depender de Quartz.
 
 [Guia de la solucion](../readme.md) | [Domain](../Bookify.Domain/readme.md) | [Infrastructure](../Bookify.Infrastructure/readme.md) | [Api](../Bookify.Api/readme.md)
 
@@ -354,7 +354,7 @@ Las restricciones de los handlers relacionan el tipo de mensaje con su respuesta
 | `ISender.Send(request, token)` | Enviar uno de los tres comandos/queries a su handler. | Espera `Result` o `Result<T>`. |
 | `IPublisher.Publish(domainEvent)` | Distribuir una notificacion de dominio a sus handlers registrados. | Espera su finalizacion, sin devolver un resultado de negocio. |
 
-Los eventos implementan `IDomainEvent`, que hereda de `INotification`. Solo `BookingReservedDomainEvent` tiene un handler en Application actualmente. Los behaviors de requests no envuelven los handlers de notificaciones. MediatR trabaja dentro del proceso; `async` no significa publicacion duradera ni trabajo independiente de la solicitud.
+Los eventos implementan `IDomainEvent`, que hereda de `INotification`. Solo `BookingReservedDomainEvent` tiene un handler en Application actualmente. Los behaviors de requests no envuelven los handlers de notificaciones. MediatR trabaja dentro del proceso y por si solo no aporta persistencia: en Bookify, Outbox aporta almacenamiento y Quartz inicia la publicacion fuera de la solicitud HTTP.
 
 ## Abstractions/Behaviors
 
@@ -669,7 +669,7 @@ Flujo:
 
 Este handler no se llama directamente. MediatR lo ejecuta cuando se publica `BookingReservedDomainEvent`.
 
-La publicacion se espera dentro de `ApplicationDbContext.SaveChangesAsync`, despues de guardar los datos. Por eso el tiempo del handler del evento forma parte de la respuesta del comando. Si un servicio de correo real fallara, el guardado ya habria terminado en el flujo actual; no hay outbox ni recuperacion duradera de eventos.
+`ApplicationDbContext.SaveChangesAsync` guarda los eventos como mensajes Outbox junto con los cambios del negocio. El job de Quartz los publica despues mediante MediatR, fuera de la solicitud HTTP: el comando no espera a este handler. Si falla el envio, el job registra el error y marca el mensaje como procesado, sin reintento automatico. El correo actual sigue siendo provisional. Los detalles de persistencia y entrega pertenecen a [Infrastructure](../Bookify.Infrastructure/readme.md#outbox-y-quartz), no al handler.
 
 El texto del correo dice que hay diez minutos para confirmar, pero no existe una tarea de caducidad ni una comprobacion de ese plazo en `Booking.Confirm`. Actualmente `EmailService` tampoco envia correos reales. Si faltan reserva o usuario, este handler simplemente termina sin registrar ni devolver un error.
 
@@ -753,7 +753,7 @@ El token de Handle no se pasa a Dapper. Si la reserva existe pero IUserContext n
 
 El handler consulta la reserva con el token de cancelacion y devuelve `BookingErrors.NotFound` si no existe. Construye la puntuacion con `Rating.Create`, propagando su error, y llama a `Review.Create` con la reserva, comentario y fecha UTC. Esa fabrica exige estado `Completed` y obtiene de la reserva los identificadores de autor y apartamento. Si rechaza la operacion, no se escribe nada.
 
-Si tiene exito, registra la resena mediante `IReviewRepository.Add`, espera una unica llamada a `SaveChangesAsync(cancellationToken)` y devuelve el id. Los errores tecnicos se propagan al middleware de Api. El handler no publica por duplicado el evento: la fabrica lo acumula y el contexto real lo publica despues de guardar. No se crea un consumidor del evento sin una reaccion de negocio definida ni se agregan reglas de unicidad o autorizacion.
+Si tiene exito, registra la resena mediante `IReviewRepository.Add`, espera una unica llamada a `SaveChangesAsync(cancellationToken)` y devuelve el id. Los errores tecnicos del comando se propagan al middleware de Api. El handler no publica por duplicado el evento: la fabrica lo acumula, el contexto real lo guarda en Outbox y Quartz lo publica posteriormente. No se crea un consumidor del evento sin una reaccion de negocio definida ni se agregan reglas de unicidad o autorizacion.
 
 Las pruebas de `Tests/Bookify.Application.Tests/Reviews/CreateReview/CreateReviewTests.cs` usan MSTest, FluentAssertions y mocks estrictos. Cubren reserva inexistente, estados no elegibles, validacion, mapeo, evento acumulado, reloj, token, escrituras y fallo de guardado. Las respuestas HTTP se prueban en Bookify.Api.Tests; las pruebas de Application no verifican persistencia ni publicacion real contra PostgreSQL.
 
@@ -951,7 +951,7 @@ Para una escritura nueva, como confirmar una reserva:
 
 Para una lectura, crear `IQuery<TDto>`, el DTO y su `IQueryHandler`. Verificar que cada parametro existe en el objeto enviado a Dapper y que nombres y tipos de columnas coinciden con el DTO. Agregar un validador de query por si solo no basta para ejecutarlo: el behavior actual esta restringido a comandos.
 
-Para reaccionar a un evento, implementar `INotificationHandler<TDomainEvent>`. El escaneo de MediatR lo registra, pero la entidad debe acumular el evento y el contexto publicarlo. Las operaciones externas de ese handler se ejecutan despues del guardado; no se dispone de outbox ni de reintentos duraderos.
+Para reaccionar a un evento, implementar `INotificationHandler<TDomainEvent>`. El escaneo de MediatR lo registra; la entidad acumula el evento y el contexto lo persiste en Outbox al guardar. Quartz lo deserializa y publica posteriormente. Un evento sin consumidores puede publicarse sin producir efectos. Los consumidores deben considerar posibles duplicados y no depender del HttpContext de la peticion original. No hay reintento automatico de errores de publicacion en la implementacion actual.
 
 ## Puntos a revisar
 
@@ -959,7 +959,7 @@ Para reaccionar a un evento, implementar `INotificationHandler<TDomainEvent>`. E
 - GetBooking ya alinea parametro, tabla y columnas con el esquema migrado. Compilar y probar con conexiones simuladas no valida la ejecucion de todas las consultas sobre PostgreSQL.
 - `ValidationBehavior` usa validacion sincronica. Si se agregan validadores asincronos, deberia adaptarse.
 - Logging no distingue un resultado fallido de negocio de uno exitoso y no registra el objeto excepcion.
-- Las llamadas Dapper y la publicacion actual de eventos no reciben el token del request; `IEmailService` tampoco lo admite.
+- Las llamadas Dapper no reciben el token del request. La publicacion de eventos usa el token del job Quartz, independiente de la solicitud original; `IEmailService` no admite token.
 - Existe control de propietario en GetBooking, pero no un behavior general de autorizacion ni controles equivalentes en ReserveBooking/CreateReview. No hay reglas de fechas futuras.
 - El correo es una implementacion vacia y el plazo de diez minutos solo aparece en el texto del mensaje.
 - Existen comandos de alta de apartamento, review, usuario, reserva y login. Confirmar, cancelar, rechazar y completar reservas siguen sin comandos ni endpoints.

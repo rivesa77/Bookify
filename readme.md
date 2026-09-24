@@ -39,7 +39,7 @@ Bookify es una solucion .NET 10 para reservar apartamentos, organizada en Domain
 | --- | --- |
 | [Domain](Bookify.Domain/readme.md) | Entidades, objetos de valor, reglas, eventos, resultados y constructores de materializacion. |
 | [Application](Bookify.Application/readme.md) | Comandos, queries, MediatR, validacion, DTO, contratos y limitaciones actuales del SQL. |
-| [Infrastructure](Bookify.Infrastructure/readme.md) | EF Core, repositorios, mapeos, migracion inicial, concurrencia y servicios externos. |
+| [Infrastructure](Bookify.Infrastructure/readme.md) | EF Core, repositorios, mapeos, migraciones, Outbox/Quartz, concurrencia y servicios externos. |
 | [Api](Bookify.Api/readme.md) | Cada archivo del host, endpoints, respuestas HTTP, configuracion, arranque y Dockerfile. |
 
 Las guias describen el codigo y las migraciones versionadas. La existencia de estos archivos no demuestra que una base de datos tenga el esquema aplicado ni que todos los endpoints hayan superado pruebas de integracion.
@@ -81,14 +81,18 @@ POST /api/bookings
   -> LoggingBehavior -> ValidationBehavior
   -> ReserveBookingCommandHandler consulta usuario, apartamento y disponibilidad
   -> Booking.Reserve calcula precios, cambia el apartamento y acumula un evento
-  -> IUnitOfWork / ApplicationDbContext guarda los cambios
-  -> IPublisher publica BookingReservedDomainEvent
+  -> IUnitOfWork / ApplicationDbContext guarda los cambios y el mensaje Outbox
   -> Respuesta HTTP 201 o 400 para fallos de negocio
+
+En segundo plano, dentro del host API:
+  -> Quartz ejecuta ProcessOutboxMessagesJob
+  -> IPublisher publica BookingReservedDomainEvent
+  -> El job actualiza processed_on_utc y error
 ```
 
 Las lecturas pasan del controlador a la query de MediatR y despues a Dapper mediante `ISqlConnectionFactory`. Devuelven DTO y no materializan entidades EF. Los behaviors actuales solo se aplican a comandos; no envuelven queries ni notificaciones.
 
-Los eventos se publican despues de guardar y forman parte del tiempo de la solicitud. Un fallo del consumidor no deshace el guardado ya realizado. No hay outbox ni entrega duradera; `EmailService` es provisional y no envia correo real.
+Los eventos se serializan y persisten en `outbox_messages` junto con los cambios del negocio. La respuesta no espera a sus consumidores: Quartz publica los mensajes pendientes en segundo plano. Development configura un intervalo de 10 segundos y lotes de 10. Actualmente un fallo de publicacion se guarda en `error` y tambien marca el mensaje como procesado: no hay reintento automatico de esos mensajes. Tampoco hay garantia de entrega exactamente una vez. `EmailService` sigue siendo provisional y no envia correo real. Consultar [Outbox y Quartz](Bookify.Infrastructure/readme.md#outbox-y-quartz).
 
 ## Capacidades actuales
 
@@ -107,7 +111,7 @@ Las pruebas se organizan en `Tests/Bookify.Application.Tests`, `Bookify.Domain.T
 | Login y perfil | `POST /api/users/login` y `GET /api/users/LogInUser`. El JSON del token usa actualmente `accessToke`. |
 | Salud | `GET /health`; conectividad PostgreSQL y GET a Keycloak:BaseUrl. |
 | Documentacion interactiva | `/swagger/index.html` consume `/openapi/v1.json`, solo en Development. |
-| Migraciones | Cinco migraciones hasta `20260917104130_Add_Permission_Tables`; aplicacion automatica en Development. |
+| Migraciones | Seis migraciones hasta `20260923111807_Add_OutBoxMessages`; aplicacion automatica en Development. |
 
 `Result` representa fallos de negocio. Los controladores de alta los convierten en `400`; la consulta de reserva devuelve `404` ante un resultado fallido. El middleware propio convierte `ValidationException` de Application en 400 y otros errores tecnicos en 500.
 
@@ -143,6 +147,8 @@ dotnet Bookify.Api.dll
 ```
 
 La variable de entorno prevalece sobre el JSON y los secretos. Si no se especifica un entorno, el arranque directo usa Production: no ejecuta las migraciones ni el sembrado automatico; prepara la base previamente. Ademas de la conexion, hay que proporcionar Authentication y Keycloak, incluida `Keycloak__BaseUrl`: el archivo Development no se carga en Production. `launchSettings.json` solo interviene al usar un perfil de lanzamiento, no al ejecutar la DLL.
+
+Production tambien necesita `Outbox__IntervalInSeconds` y `Outbox__BatchSize` con valores positivos: el job se registra en todos los entornos, pero sus valores actuales solo estan en Development. Consultar [Outbox en el host](Bookify.Api/readme.md#outbox-en-el-host).
 
 Alternativamente, para ejecutar la API en Windows con PostgreSQL publicado por Docker:
 
@@ -194,7 +200,7 @@ Una imagen final compilada en Release no cambia `ASPNETCORE_ENVIRONMENT`: con el
 ## Cambios recientes y limites
 
 - `Entity` tiene constructor protegido vacio; `Apartment`, `Booking`, `Review` y `User` tienen constructores privados vacios. EF puede construir el modelo sin enlazar las navegaciones owned al constructor de negocio.
-- Existen cinco migraciones con sus Designer y el Snapshot actual. Crear una migracion genera codigo; aplicarla modifica la base de datos.
+- Existen seis migraciones con sus Designer y el Snapshot actual. Outbox agrega `outbox_messages`, con `processed_on_utc` y `error` anulables. Crear una migracion genera codigo; aplicarla modifica la base de datos.
 - `BookingResponse` ya expone `PriceAmount`, codigos de moneda `string` y `DurationStart`/`DurationEnd` alineados con los alias de la query.
 - `Change_TableName_And_Field` renombra las tablas a minusculas y crea el indice unico de `identity_id`. GetBooking ya envia `BookingId` y consulta `amenities_up_change_*` con alias hacia el DTO. No basta aplicar solo Initial_Database.
 - `Address` sigue siendo opcional para EF; sus columnas admiten `NULL`. El constructor vacio no establece obligatoriedad de campos ni navegaciones.
@@ -203,16 +209,16 @@ Una imagen final compilada en Release no cambia `ASPNETCORE_ENVIRONMENT`: con el
 
 ## Pruebas y verificacion
 
-Resultados comprobados con `dotnet test` por proyecto y sin servicios externos:
+Ultimos resultados comprobados con `dotnet test` por proyecto, sin servicios externos. Infrastructure se verifico el 23/09/2026 tras agregar los tests Outbox; los demas resultados corresponden a las ejecuciones anteriores documentadas:
 
 | Proyecto y guia | Resultado |
 | --- | --- |
 | [Domain.Tests](Tests/Bookify.Domain.Tests/readme.md) | 137 correctos. |
 | [Application.Tests](Tests/Bookify.Application.Tests/readme.md) | 138 correctos. |
-| [Infrastructure.Tests](Tests/Bookify.Infrastructure.Tests/readme.md), filtro Infrastructure | 82 correctos. |
+| [Infrastructure.Tests](Tests/Bookify.Infrastructure.Tests/readme.md), filtro Infrastructure | 108 correctos, incluidos 20 unitarios de Outbox. |
 | [Api.Tests](Tests/Bookify.Api.Tests/readme.md) | 57 correctos. |
 | Bookify.Architecture.Tests | 8 correctos. |
 
-Los fallos anteriores de arranque se han corregido agregando Keycloak:BaseUrl con una URL ficticia a ApiFactory y DependencyInjectionTests. Queda pendiente probar /health con checks simulados. Los casos PostgreSQL requieren BOOKIFY_TEST_POSTGRES y no se han ejecutado en esta revision. Los informes de cobertura anteriores a health checks son historicos, no una medida del codigo actual.
+Los hosts de tests aportan Keycloak:BaseUrl ficticia y las opciones Outbox. ApiFactory retira el servicio alojado de Quartz para no iniciar trabajos SQL durante las pruebas HTTP. Queda pendiente probar /health con checks simulados. Los 26 casos PostgreSQL requieren BOOKIFY_TEST_POSTGRES y quedaron omitidos, incluidos cuatro de Outbox; no se cuentan como correctos. Los informes de cobertura anteriores a health checks son historicos, no una medida del codigo actual.
 
 Para profundizar, seguir las guias en el orden Domain, Application, Infrastructure y Api. Cada una incluye el inventario de archivos y explica las decisiones y el comportamiento actual de su capa.

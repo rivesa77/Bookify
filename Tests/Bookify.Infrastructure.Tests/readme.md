@@ -2,13 +2,15 @@
 
 ## Objetivo
 
-El proyecto comprueba los adaptadores de Infrastructure: autenticacion HTTP, claims, politicas de permisos, configuracion de EF Core, repositorios, migraciones, preparacion de mensajes Outbox y registro de dependencias.
+El proyecto comprueba los adaptadores de Infrastructure: autenticacion HTTP, claims, politicas de permisos, configuracion de EF Core, repositorios, migraciones, preparacion/procesamiento de Outbox, configuracion Quartz y registro de dependencias.
 
 Usa MSTest 4 con el runner VSTest (`Microsoft.NET.Test.Sdk` y `MSTest.TestAdapter`), FluentAssertions y Moq, con las versiones que ya usa Application.Tests. Referencia Infrastructure directamente, sin cargar la API. `InternalsVisibleTo` permite comprobar las clases internas sin hacerlas publicas.
 
 ## Estado actual
 
-Cinco esperaban el antiguo contrato de eventos y dos no aportaban IHostApplicationLifetime, ahora necesario para validar el servicio alojado de Quartz.
+El 23/09/2026 la suite completa obtuvo 108 casos correctos, 0 fallidos y 26 omitidos por falta de BOOKIFY_TEST_POSTGRES. Incluye 20 casos unitarios Outbox y cuatro PostgreSQL Outbox, estos ultimos dentro de los omitidos. No se ha medido una nueva cobertura porcentual.
+
+En la adaptacion anterior se corrigieron cinco tests que esperaban publicacion desde SaveChanges y dos que no aportaban IHostApplicationLifetime, necesario para validar el servicio alojado de Quartz.
 
 DependencyInjectionTests aporta un doble de IHostApplicationLifetime, configura IntervalInSeconds/BatchSize y mantiene ValidateScopes/ValidateOnBuild. Comprueba el registro de Quartz y sus opciones sin iniciar el scheduler. Se agregan tambien un caso de reintento sobre el mismo contexto y la generacion SQL de avance/retroceso de Add_OutBoxMessages.
 
@@ -64,7 +66,7 @@ Sin `BOOKIFY_TEST_POSTGRES`, MSTest marca los casos como inconclusos/omitidos: n
 | `Outbox/ProcessOutboxMessagesJobSetupTests.cs` | Tres intervalos: registra un unico job del tipo e identidad esperados, con ejecucion concurrente deshabilitada, y un trigger asociado con repeticion indefinida y sin fecha final. Inspecciona QuartzOptions sin arrancar el scheduler ni esperar tiempos reales. |
 | `Outbox/PostgresOutboxTests.cs` | Cuatro casos con PostgreSQL: persistencia conjunta de usuario/evento pendiente, rollback de ambos, procesamiento ordenado por lotes sin volver a publicar mensajes procesados y almacenamiento del error sin reintento automatico. |
 | `Support/OutboxJobTestContext.cs` | Ejecuta el job y Dapper reales sobre dobles ADO.NET. Proporciona filas mediante DataTableReader y captura parametros, transacciones y orden de operaciones. Permite simular errores de base de datos sin abrir conexiones. |
-| `Persistence/ModelConfigurationTests.cs` | Las siete configuraciones: tablas, claves, longitudes y conversiones de objetos de valor, owned types, relaciones, indices unicos, token xmin, tabla intermedia de permisos y datos iniciales. Evita la regresion de una FK RoleId dentro de permissions. |
+| `Persistence/ModelConfigurationTests.cs` | Las ocho configuraciones: tablas, claves, longitudes y conversiones de objetos de valor, owned types, relaciones, indices unicos, token xmin, tabla intermedia de permisos, datos iniciales y nulabilidad de ProcessedOnUtc/Error en Outbox. Evita la regresion de una FK RoleId dentro de permissions. |
 | `Persistence/MigrationTests.cs` | Generacion SQL de avance y retroceso para las seis migraciones, incluida Add_OutBoxMessages. Comprueba las tablas de permisos/outbox y ausencia de diferencias pendientes con el Snapshot. No ejecuta ese SQL. |
 | `Persistence/RepositoryTrackingTests.cs` | Add de los cuatro repositorios y la base Repository: estado Added de entidades, rol existente Unchanged y ausencia de guardado o limpieza de eventos al agregar. |
 | `Persistence/PostgresRepositoryTests.cs` | Persistencia y lectura de los cuatro agregados, identificadores inexistentes, materializacion real, estados y limites inclusivos de solapamiento, xmin con dos contextos, SqlConnectionFactory, Dapper/DateOnly y migraciones completas con rollback y seeds. |
@@ -102,7 +104,7 @@ Los tests reflejan el contrato actual, incluidos sus limites: una excepcion al p
 - PermissionAuthorizationHandler ya usa Contains(requirement.Permission), no Count > 0. Tener un permiso diferente no satisface el requisito.
 - GetPermissionsForUserAsync ya aplana todos los roles y permisos, aplica Distinct, materializa con ToListAsync y construye HashSet. La regresion con varios roles comprueba esa union sin depender del orden.
 - GetRolesForUserAsync conserva FirstAsync sobre el usuario y lanza si no existe; devuelve todos los roles de ese usuario, no solo uno. La consulta de permisos, en cambio, devuelve un conjunto vacio sin usuario/roles/permisos. La transformacion de claims puede fallar antes de llegar al handler de permisos.
-- SaveChanges ahora convierte los eventos en Outbox antes de llamar a EF y vacia la lista de dominio. Si el guardado falla, los mensajes siguen Added en el contexto, pero no se demuestra que esten persistidos. Los tests usan un interceptor que suprime la escritura; no prueban atomicidad ni entrega. IPublisher ya no se invoca desde SaveChanges.
+- SaveChanges convierte los eventos en Outbox antes de llamar a EF y vacia la lista de dominio. Si el guardado falla, los mensajes siguen Added en el contexto, pero no se demuestra que esten persistidos. ApplicationDbContextTests usa un interceptor que suprime la escritura; no prueba atomicidad ni entrega. PostgresOutboxTests comprueba persistencia y rollback solo cuando se habilita PostgreSQL. IPublisher ya no se invoca desde SaveChanges.
 - ProcessedOnUtc y Error son ahora anulables y los mensajes nuevos empiezan con ambos valores null. La migracion regenerada 20260923111807_Add_OutBoxMessages admite NULL en ambas columnas. Los tests comprueban esos valores iniciales y la nulabilidad del modelo EF. El job dispone de pruebas propias, pero no se inicia el scheduler Quartz y las pruebas contra PostgreSQL requieren el servidor de pruebas descrito arriba.
 - La simulacion HTTP comprueba el contrato del cliente, no la configuracion de un realm real. No valida credenciales reales, TLS, descubrimiento OIDC ni firmas JWT. Un token con access_token vacio tampoco se rechaza expresamente en el servicio actual.
 - AuthenticationService confia en su delegating handler para rechazar respuestas HTTP de error. La extraccion de Location no valida todos los formatos malformados; los tests no afirman que lo haga.

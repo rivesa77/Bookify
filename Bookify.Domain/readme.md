@@ -973,7 +973,7 @@ Si la resena se crea correctamente:
 - Levanta `ReviewCreatedDomainEvent`.
 - Devuelve un `Result<Review>` exitoso.
 
-El autor se copia de `booking.UserId`; no se recibe como parametro independiente. El metodo no comprueba si ya existe otra resena para la reserva ni autentica al llamador. `IReviewRepository` expone ahora `void Add(Review review)`. `CreateReviewCommandHandler` utiliza la fabrica y el repositorio, y guarda mediante `IUnitOfWork`; `ReviewRepository` implementa el contrato en Infrastructure. El evento de creacion sigue sin handler, aunque se acumula y puede publicarse al guardar.
+El autor se copia de `booking.UserId`; no se recibe como parametro independiente. El metodo no comprueba si ya existe otra resena para la reserva ni autentica al llamador. `IReviewRepository` expone ahora `void Add(Review review)`. `CreateReviewCommandHandler` utiliza la fabrica y el repositorio, y guarda mediante `IUnitOfWork`; `ReviewRepository` implementa el contrato en Infrastructure. El evento de creacion sigue sin handler: se acumula, se persiste en Outbox al guardar y se publica posteriormente, sin efectos de negocio adicionales mientras no tenga consumidor.
 
 ### Rating
 
@@ -1148,12 +1148,12 @@ El flujo habitual es:
 
 1. Una entidad ejecuta una operacion de negocio.
 2. La entidad agrega uno o mas eventos a su lista interna.
-3. Application guarda cambios mediante `IUnitOfWork`.
-4. Infrastructure obtiene los eventos con `GetDomainEvents`.
-5. Infrastructure limpia las listas de las entidades con `ClearDomainEvent`.
-6. Infrastructure publica la copia de eventos uno a uno con MediatR y espera a sus handlers.
+3. Application solicita el guardado mediante `IUnitOfWork`.
+4. Antes de guardar, Infrastructure obtiene los eventos con `GetDomainEvents` y limpia las listas con `ClearDomainEvent`.
+5. Serializa esos eventos como mensajes Outbox y guarda entidades y mensajes en la misma llamada a EF.
+6. Quartz procesa los mensajes pendientes en segundo plano, publica cada evento mediante MediatR y registra el resultado.
 
-El orden importa: la limpieza sucede antes de publicar. Si un handler falla, el guardado ya termino en el flujo actual y no hay una cola persistida que permita recuperar automaticamente los eventos. El handler de reserva solicita un correo, pero la implementacion actual del envio es vacia.
+El orden importa: la limpieza sucede antes de persistir. Si falla el guardado de EF, los mensajes ya agregados siguen pendientes en el contexto, pero no se consideran persistidos. Si falla posteriormente un consumidor, el procesador actual guarda el error y marca el mensaje como procesado, sin reintento automatico. El handler de reserva solicita un correo, pero la implementacion actual del envio es vacia. Domain no depende de Outbox, EF ni Quartz: esa coordinacion pertenece a [Infrastructure](../Bookify.Infrastructure/readme.md#outbox-y-quartz).
 
 ## Como usar repositorios
 

@@ -1,6 +1,6 @@
 # Bookify.Api
 
-Esta es la capa de entrada HTTP y el host ejecutable de Bookify. Recibe solicitudes, convierte sus datos en comandos o queries de Application y adapta los resultados a respuestas HTTP. Tambien compone las dependencias, configura autenticacion/autorizacion, publica `/health` y, durante desarrollo, OpenAPI, Swagger UI, migraciones y datos de ejemplo. Revision: 22 de septiembre de 2026.
+Esta es la capa de entrada HTTP y el host ejecutable de Bookify. Recibe solicitudes, convierte sus datos en comandos o queries de Application y adapta los resultados a respuestas HTTP. Tambien aloja Quartz para procesar Outbox, compone las dependencias, configura autenticacion/autorizacion, publica `/health` y, durante desarrollo, OpenAPI, Swagger UI, migraciones y datos de ejemplo. Revision: 23 de septiembre de 2026.
 
 [Guia de la solucion](../readme.md) | [Domain](../Bookify.Domain/readme.md) | [Application](../Bookify.Application/readme.md) | [Infrastructure](../Bookify.Infrastructure/readme.md)
 
@@ -186,7 +186,7 @@ El arranque sigue este orden:
 1. `WebApplication.CreateBuilder(args)` configura el host y sus fuentes de configuracion.
 2. `AddControllers()` registra controladores; `AddEndpointsApiExplorer()` agrega exploracion de endpoints; `AddOpenApi()` registra la generacion del documento.
 3. `AddApplication()` registra MediatR, handlers, behaviors, validadores y precios.
-4. `AddInfrastructure(builder.Configuration)` registra persistencia, reloj, correo, autenticacion, autorizacion y health checks.
+4. `AddInfrastructure(builder.Configuration)` registra persistencia, reloj, correo, autenticacion, autorizacion, health checks y el servicio alojado de Quartz para Outbox.
 5. `builder.Build()` construye la aplicacion.
 6. Si el entorno es Development, configura OpenAPI y Swagger UI y ejecuta `ApplyMigration()` y despues `SeedData()`.
 7. En los demas entornos, agrega `UseHttpsRedirection()`.
@@ -209,6 +209,8 @@ El registro `AddOpenApi()` se ejecuta siempre; el endpoint solo se publica en De
 No hay un endpoint para `/`: un 404 en la raiz no demuestra que la API este detenida. `/health` solo es accesible despues de completar el arranque; un error de configuracion, migracion o sembrado puede impedir que llegue a publicarse.
 
 ## Estado de salud: /health
+
+El estado de Outbox no forma parte de estos checks: `/health` puede responder Healthy aunque existan mensajes fallidos o pendientes. Ver [procesamiento en segundo plano](#outbox-en-el-host).
 
 El endpoint se mapea en Program.cs, no en un controlador ni mediante MediatR. Infrastructure registra dos comprobaciones:
 
@@ -334,7 +336,7 @@ El id debe corresponder a una reserva existente y completada. La puntuacion admi
 
 Devuelve 201 con el GUID creado, 404 con `BookingErrors.NotFound` si la reserva no existe o 400 con `ReviewErrors.NotEligible` si no esta completada. El middleware convierte errores del validador en 400 y errores tecnicos en 500. No se proporciona Location porque no existe un GET de resena por id.
 
-Reutiliza Review.Create y la tabla reviews, sin una migracion especifica para este endpoint. El evento ReviewCreatedDomainEvent se acumula en el dominio y se publica al guardar; sigue sin tener un handler ni efectos externos asociados. No se agrega una regla de unicidad por reserva ni autenticacion: copiar el autor de la reserva no autoriza al solicitante HTTP. Para usar este endpoint, la reserva debe estar ya completada; no se incorpora aqui un endpoint de finalizacion.
+Reutiliza Review.Create y la tabla reviews, sin una migracion especifica para este endpoint. ReviewCreatedDomainEvent se acumula en el dominio, se persiste en Outbox al guardar y se publica posteriormente por Quartz; sigue sin tener un handler ni efectos externos asociados. El esquema general debe incluir Add_OutBoxMessages. No se agrega una regla de unicidad por reserva ni autenticacion: copiar el autor de la reserva no autoriza al solicitante HTTP. Para usar este endpoint, la reserva debe estar ya completada; no se incorpora aqui un endpoint de finalizacion.
 
 ## Controllers/Bookings/BookingsController.cs
 
@@ -372,6 +374,25 @@ Record publico sellado con `Guid ApartmentId`, `Guid UserId`, `DateOnly StartDat
 `[ApiController]` participa en el binding y la validacion de modelo HTTP. Eso es distinto de `Bookify.Application.Exceptions.ValidationException` lanzada dentro de MediatR, que ExceptionHandlingMiddleware transforma en un 400 estructurado. No se comprueba que el solicitante este autorizado a usar el UserId del cuerpo.
 
 ## Configuracion y perfiles
+
+### Outbox en el host
+
+Quartz arranca con la API en todos los entornos, tanto localmente como en Docker. No requiere un endpoint ni un contenedor adicional. `appsettings.Development.json` define Outbox:IntervalInSeconds=10 y Outbox:BatchSize=10; cada ejecucion selecciona hasta diez pendientes. La respuesta HTTP espera el guardado de entidades y mensajes, no la publicacion ni el envio de correo.
+
+En Production no se carga el archivo Development y `appsettings.json` no tiene esta seccion. Proporcionar valores positivos en la configuracion del despliegue, por ejemplo:
+
+```powershell
+$env:Outbox__IntervalInSeconds = "10"
+$env:Outbox__BatchSize = "10"
+```
+
+Aplicar previamente las seis migraciones, incluida `20260923111807_Add_OutBoxMessages`, ya que Production no ejecuta ApplyMigration. Compose actualmente usa Development y hereda los valores Outbox del JSON, salvo que se sobrescriban con variables de entorno. Registrar Quartz no crea la tabla.
+
+El apagado ordenado usa WaitForJobsToComplete. Si falla un consumidor, el job registra el error y marca el mensaje como procesado: no altera una respuesta HTTP ya devuelta ni reintenta ese mensaje automaticamente. Si falla una actualizacion o el commit, pueden repetirse publicaciones. No existe endpoint de consulta/reintento ni comprobacion de Outbox en /health. Consultar [clases y limites](../Bookify.Infrastructure/readme.md#outbox-y-quartz).
+
+ApiFactory elimina unicamente el servicio alojado Quartz de los hosts de pruebas HTTP para no ejecutar SQL ni temporizadores. El job se prueba por separado en [Infrastructure.Tests](../Tests/Bookify.Infrastructure.Tests/readme.md#pruebas-outbox).
+
+### Configuracion general
 
 `appsettings.json` configura logging general en Information, ASP.NET Core en Warning y `AllowedHosts` como `*`. No incluye cadena de conexion. `appsettings.Development.json` agrega `ConnectionStrings:Database` con host `localhost`, puerto 5432, base `bookify` y credenciales de ejemplo `postgres`/`postgres`. Esto permite ejecutar los perfiles `http` y `https` contra PostgreSQL instalado en Windows, sin Docker. Las credenciales reales se configuran con secretos de desarrollo o variables de entorno. `docker-compose.yml` sobrescribe la cadena del contenedor API con `Host=bookify-db` mediante `ConnectionStrings__Database`, que prevalece sobre el JSON y los secretos de desarrollo.
 
