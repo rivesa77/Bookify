@@ -40,5 +40,26 @@
         public DateTime? LastBookedOnUTC { get; internal set; }
 
         public List<Amenity> Amenities { get; private set; } = [];
+
+        public void Update(
+            Name name,
+            Description description,
+            Address address,
+            Money price,
+            Money cleaningFeeAmount,
+            List<Amenity> amenities)
+        {
+            Name = name;
+
+            Description = description;
+
+            Address = address;
+
+            Price = price;
+
+            CleaningFeeAmount = cleaningFeeAmount;
+
+            Amenities = [.. amenities];
+        }
     }
 }

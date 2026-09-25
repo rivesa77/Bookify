@@ -1,8 +1,10 @@
 # Pruebas de Bookify.Api
 
+Controllers/Apartments/UpdateApartmentTests comprueba el PUT con mapeo completo, las respuestas 204/400/404/409, el rechazo anonimo 401, la ruta Guid invalida y el reenvio del token desde el controlador. El host HTTP simula ISender; la validacion real del comando se prueba en Application.Tests.
+
 ## Objetivo
 
-El proyecto comprueba el contrato HTTP de la API, la traduccion entre peticiones y comandos/queries, el middleware de excepciones y las extensiones de arranque. Mantiene los casos existentes y amplia la bateria de 6 a 57 casos.
+El proyecto comprueba el contrato HTTP de la API, la traduccion entre peticiones y comandos/queries, el middleware de excepciones y las extensiones de arranque.
 
 Utiliza MSTest 4 con VSTest, FluentAssertions y Moq. `Microsoft.AspNetCore.Mvc.Testing` 10.0.12 permite ejecutar el Program.cs real mediante WebApplicationFactory y TestServer. No se ha cambiado codigo de produccion ni se ha hecho publico Program: la factoria usa UsersController como tipo marcador del ensamblado.
 
@@ -26,7 +28,7 @@ ApiFactory conserva la configuracion Outbox de prueba y el constructor actualiza
 
 Los tests HTTP no deben ejecutar el procesador SQL contra una base real ni depender de temporizadores. Este aislamiento no valida el funcionamiento del job: las rutas, autenticacion de prueba, middleware, migraciones simuladas y sembrado conservan sus comprobaciones anteriores.
 
-[Infrastructure.Tests](../Bookify.Infrastructure.Tests/readme.md#pruebas-outbox) contiene ahora 20 casos unitarios para las cinco clases Outbox y cuatro casos PostgreSQL opcionales. Los tests del setup inspeccionan la configuracion sin iniciar Quartz; no equivalen a una prueba del scheduler alojado durante el ciclo de vida real de la API.
+[Infrastructure.Tests](../Bookify.Infrastructure.Tests/readme.md#pruebas-outbox) cubre las clases Outbox con pruebas unitarias y casos PostgreSQL opcionales. Los tests del setup inspeccionan la configuracion sin iniciar Quartz; no equivalen a una prueba del scheduler alojado durante el ciclo de vida real de la API.
 
 ## Tipos de pruebas
 

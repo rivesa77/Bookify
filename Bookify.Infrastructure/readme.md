@@ -1,8 +1,16 @@
 # Bookify.Infrastructure
 
+## Persistencia de la actualizacion de apartamentos
+
+UpdateApartment reutiliza ApartmentRepository.GetByIdAsync: Repository consulta con seguimiento EF en el ApplicationDbContext scoped compartido con IUnitOfWork. Al modificar Apartment.Update, SaveChangesAsync detecta los cambios de propiedades, valores owned y comodidades. No hace falta agregar un metodo Update al repositorio, llamar DbSet.Update ni generar una migracion: se utilizan las columnas existentes.
+
+La propiedad sombra Version usa xmin para detectar escrituras concurrentes; ApplicationDbContext traduce el fallo EF y el nuevo handler devuelve ApartmentErrors.Conflict, que API convierte en 409. No se ha incorporado un token enviado por el cliente, por lo que esto no detecta por si solo formularios antiguos cuando el servidor ya lee la version mas reciente.
+
+ApartmentUpdateTests comprueba el seguimiento sin servidor. PostgresApartmentUpdateTests comprueba, cuando se habilita BOOKIFY_TEST_POSTGRES, la lectura posterior de los valores reemplazados y que la reserva existente conserva su precio.
+
 Este proyecto contiene la capa de infraestructura de Bookify. Su responsabilidad es implementar detalles tecnicos que las capas internas necesitan, pero no deben conocer directamente.
 
-Aqui viven las implementaciones de persistencia, acceso SQL, reloj, correo, autenticacion, autorizacion, comprobaciones de salud y Outbox con Quartz. Revision: 23 de septiembre de 2026.
+Aqui viven las implementaciones de persistencia, acceso SQL, reloj, correo, autenticacion, autorizacion, comprobaciones de salud y Outbox con Quartz.
 
 [Guia de la solucion](../readme.md) | [Domain](../Bookify.Domain/readme.md) | [Application](../Bookify.Application/readme.md) | [Api](../Bookify.Api/readme.md)
 
@@ -954,8 +962,8 @@ La traduccion de excepciones ya esta conectada; las garantias de concurrencia y 
 - Las consultas SQL viven en Application. GetBooking ya alinea nombres y parametros con el esquema; sigue siendo necesario probar SQL y materializacion contra PostgreSQL.
 - Las fabricas de `Name` y `Rating` pueden rechazar datos al materializarlos. Tener una configuracion EF y una compilacion correcta no demuestra que todos los datos existentes sean validos ni que las entidades se materialicen correctamente.
 - `DateOnlyTypeHandler.Parse` presupone un `DateTime`; conviene probar el contrato con el proveedor configurado.
-- [Infrastructure.Tests](../Tests/Bookify.Infrastructure.Tests/readme.md) incluye pruebas sin red y pruebas PostgreSQL opcionales con bases aisladas. Estas ultimas requieren BOOKIFY_TEST_POSTGRES; no se han ejecutado en esta revision documental.
-- El grupo sin red pasa sus 108 casos, incluidos 20 unitarios de Outbox. Los 26 casos PostgreSQL quedan omitidos sin BOOKIFY_TEST_POSTGRES. No se comprueba conectividad externa ni la ejecucion de /health.
+- [Infrastructure.Tests](../Tests/Bookify.Infrastructure.Tests/readme.md) incluye pruebas sin red y pruebas PostgreSQL opcionales con bases aisladas. Estas ultimas requieren BOOKIFY_TEST_POSTGRES.
+- Los tests sin red cubren el registro de dependencias y el procesamiento Outbox. Los tests PostgreSQL requieren BOOKIFY_TEST_POSTGRES. Estas pruebas no comprueban conectividad con Keycloak ni la ejecucion de /health.
 
 ## Resumen
 

@@ -1,5 +1,11 @@
 # Bookify.Domain
 
+## Actualizacion de apartamentos
+
+Apartment.Update recibe Name, Description, Address, Price, CleaningFeeAmount y la lista Amenities. Reemplaza esos valores y copia la lista para que modificar la entrada despues no cambie la entidad. Mantiene Id y LastBookedOnUTC y no altera los importes ya calculados en Booking. No publica ni acumula un evento de actualizacion porque no hay una reaccion de negocio definida.
+
+ApartmentErrors agrega Conflict para el conflicto de escritura que Application traduce desde ConcurrencyException; NotFound representa ausencia de la entidad. Name.Create conserva la regla actual de nombre no vacio y longitud maxima 200. Las demas validaciones de entrada se ejecutan en Application, como en el alta existente.
+
 Este proyecto contiene el nucleo del dominio de Bookify. Su responsabilidad es modelar las reglas principales del negocio: usuarios, apartamentos, reservas, resenas, dinero, errores y eventos de dominio.
 
 La capa Domain no deberia depender de detalles externos como bases de datos, controladores HTTP, colas, archivos o frameworks de infraestructura. Aqui viven las entidades y objetos de valor que representan el lenguaje del negocio.
@@ -1210,7 +1216,7 @@ Estos puntos no impiden entender la capa, pero conviene tenerlos presentes:
 
 ## Resumen
 
-Las reglas descritas se prueban en [Bookify.Domain.Tests](../Tests/Bookify.Domain.Tests/readme.md): 137 casos correctos el 22/09/2026. No requieren servicios externos; la materializacion EF, los indices y xmin se comprueban en Infrastructure.Tests con su alcance especifico.
+Las reglas descritas se prueban en [Bookify.Domain.Tests](../Tests/Bookify.Domain.Tests/readme.md). No requieren servicios externos; la materializacion EF, los indices y xmin se comprueban en Infrastructure.Tests con su alcance especifico.
 
 `Bookify.Domain` contiene el modelo central del negocio. Sus entidades encapsulan identidad y comportamiento, sus objetos de valor expresan conceptos importantes, sus errores permiten fallos controlados, sus eventos comunican cambios relevantes y sus repositorios definen contratos sin acoplar el dominio a la base de datos.
 

@@ -1,5 +1,9 @@
 # Bookify
 
+## Actualizacion de apartamentos
+
+Disponible `PUT /api/apartments/{id}` con autenticacion y el cuerpo completo del alta. Devuelve 204 al guardar, 400 por entrada invalida, 404 si no existe y 409 ante conflicto de concurrencia. Conserva Id, LastBookedOnUTC y los precios de reservas existentes. No requiere migracion ni un metodo adicional del repositorio EF. Ver [contrato y limites de autorizacion](Bookify.Api/readme.md#actualizar-apartamento) y el ejemplo de Bookify.Api.http.
+
 ## Estado de salud
 
 `GET /health` devuelve JSON con el estado de PostgreSQL y de la URL base de Keycloak. Se publica en todos los entornos, sin exigir autorizacion; no es una interfaz grafica ni una prueba completa de login o del esquema. Consultar [funcionamiento y diagnostico](Bookify.Api/readme.md#estado-de-salud-health) y [registro de los checks](Bookify.Infrastructure/readme.md#health-checks).
@@ -205,20 +209,12 @@ Una imagen final compilada en Release no cambia `ASPNETCORE_ENVIRONMENT`: con el
 - `Change_TableName_And_Field` renombra las tablas a minusculas y crea el indice unico de `identity_id`. GetBooking ya envia `BookingId` y consulta `amenities_up_change_*` con alias hacia el DTO. No basta aplicar solo Initial_Database.
 - `Address` sigue siendo opcional para EF; sus columnas admiten `NULL`. El constructor vacio no establece obligatoriedad de campos ni navegaciones.
 - El conflicto de EF se traduce a `ConcurrencyException` y despues a `BookingErrors.Overlap`. El token sombra del apartamento usa `xmin` y requiere una actualizacion efectiva del apartamento; no protege todas las entidades ni cualquier insercion por otros medios.
-- Hay pruebas HTTP con autenticacion simulada y pruebas opcionales de integracion PostgreSQL. No verifican un flujo JWT real contra Keycloak; los resultados actuales se detallan abajo.
+- Hay pruebas HTTP con autenticacion simulada y pruebas opcionales de integracion PostgreSQL. No verifican un flujo JWT real contra Keycloak; su alcance se describe en las guias de pruebas.
 
 ## Pruebas y verificacion
 
-Ultimos resultados comprobados con `dotnet test` por proyecto, sin servicios externos. Infrastructure se verifico el 23/09/2026 tras agregar los tests Outbox; los demas resultados corresponden a las ejecuciones anteriores documentadas:
+Las guias de [Domain.Tests](Tests/Bookify.Domain.Tests/readme.md), [Application.Tests](Tests/Bookify.Application.Tests/readme.md), [Infrastructure.Tests](Tests/Bookify.Infrastructure.Tests/readme.md) y [Api.Tests](Tests/Bookify.Api.Tests/readme.md) describen los casos y como ejecutarlos. Los tests de arquitectura verifican las dependencias entre capas.
 
-| Proyecto y guia | Resultado |
-| --- | --- |
-| [Domain.Tests](Tests/Bookify.Domain.Tests/readme.md) | 137 correctos. |
-| [Application.Tests](Tests/Bookify.Application.Tests/readme.md) | 138 correctos. |
-| [Infrastructure.Tests](Tests/Bookify.Infrastructure.Tests/readme.md), filtro Infrastructure | 108 correctos, incluidos 20 unitarios de Outbox. |
-| [Api.Tests](Tests/Bookify.Api.Tests/readme.md) | 57 correctos. |
-| Bookify.Architecture.Tests | 8 correctos. |
-
-Los hosts de tests aportan Keycloak:BaseUrl ficticia y las opciones Outbox. ApiFactory retira el servicio alojado de Quartz para no iniciar trabajos SQL durante las pruebas HTTP. Queda pendiente probar /health con checks simulados. Los 26 casos PostgreSQL requieren BOOKIFY_TEST_POSTGRES y quedaron omitidos, incluidos cuatro de Outbox; no se cuentan como correctos. Los informes de cobertura anteriores a health checks son historicos, no una medida del codigo actual.
+Los hosts de tests aportan Keycloak:BaseUrl ficticia y las opciones Outbox. ApiFactory retira el servicio alojado de Quartz para no iniciar trabajos SQL durante las pruebas HTTP. Los tests de integracion PostgreSQL requieren BOOKIFY_TEST_POSTGRES. Queda pendiente probar /health con checks simulados.
 
 Para profundizar, seguir las guias en el orden Domain, Application, Infrastructure y Api. Cada una incluye el inventario de archivos y explica las decisiones y el comportamiento actual de su capa.

@@ -1,6 +1,18 @@
 # Bookify.Api
 
-Esta es la capa de entrada HTTP y el host ejecutable de Bookify. Recibe solicitudes, convierte sus datos en comandos o queries de Application y adapta los resultados a respuestas HTTP. Tambien aloja Quartz para procesar Outbox, compone las dependencias, configura autenticacion/autorizacion, publica `/health` y, durante desarrollo, OpenAPI, Swagger UI, migraciones y datos de ejemplo. Revision: 23 de septiembre de 2026.
+## Actualizar apartamento
+
+`PUT /api/apartments/{id}` sustituye todos los datos editables, no es PATCH ni upsert. [UpdateApartmentRequest](Controllers/Apartments/UpdateApartmentRequest.cs) contiene los mismos campos del alta: Name, Description, Country, State, ZipCode, City, Street, PriceAmount, CleaningFeeAmount, Currency y Amenities. El id procede exclusivamente de la ruta. ApartmentsController.UpdateApartment construye el comando y reenvia el CancellationToken.
+
+Respuestas: 204 sin cuerpo al guardar, 400 por validacion, 401 sin autenticacion, 404 con Apartment.NotFound si no existe y 409 con Apartment.Conflict si EF detecta concurrencia. Un id de ruta que no sea Guid no coincide con `{id:guid}` y devuelve 404; Guid.Empty lo rechaza el validador con 400.
+
+Nombre no vacio de hasta 200 caracteres, descripcion no vacia de hasta 2000, direccion completa, precio positivo, limpieza no negativa, EUR/USD y comodidades validas sin duplicados. Una lista Amenities vacia elimina las anteriores. Conserva Id y LastBookedOnUTC; no recalcula importes de reservas existentes ni produce un evento Outbox nuevo.
+
+Hereda Authorize del controlador: cualquier usuario autenticado puede editar, igual que en el alta actual. El modelo no define propietario ni permiso especifico para editar apartamentos; no se incorpora una comprobacion de propiedad inexistente. Revisar esa politica antes de ofrecer administracion a usuarios finales.
+
+No expone ETag/version del cliente: el conflicto cubre cambios detectados entre lectura y guardado, no formularios antiguos enviados despues de otra actualizacion ya completada. Recargar antes de reintentar un 409. [Bookify.Api.http](Bookify.Api.http) incluye una peticion completa con ApartmentId y AccessToken reemplazables.
+
+Esta es la capa de entrada HTTP y el host ejecutable de Bookify. Recibe solicitudes, convierte sus datos en comandos o queries de Application y adapta los resultados a respuestas HTTP. Tambien aloja Quartz para procesar Outbox, compone las dependencias, configura autenticacion/autorizacion, publica `/health` y, durante desarrollo, OpenAPI, Swagger UI, migraciones y datos de ejemplo.
 
 [Guia de la solucion](../readme.md) | [Domain](../Bookify.Domain/readme.md) | [Application](../Bookify.Application/readme.md) | [Infrastructure](../Bookify.Infrastructure/readme.md)
 
@@ -126,7 +138,7 @@ Ante un 401, comprobar vencimiento, firma, aud, iss, realm y conectividad a meta
 
 ### Alcance de las pruebas
 
-Los tests directos de controladores y de ISender no ejecutan autorizacion HTTP. [Api.Tests](../Tests/Bookify.Api.Tests/readme.md) tambien usa WebApplicationFactory para comprobar 401/403, rutas, JSON y middleware, pero sustituye JWT y la consulta de permisos por autenticacion de prueba. No verifica firmas, expiracion, emisor/audiencia ni un realm real. El 22/09/2026 pasan los 57 casos tras agregar BaseUrl ficticia a ApiFactory; aun no hay pruebas dedicadas a /health.
+Los tests directos de controladores y de ISender no ejecutan autorizacion HTTP. [Api.Tests](../Tests/Bookify.Api.Tests/readme.md) tambien usa WebApplicationFactory para comprobar 401/403, rutas, JSON y middleware, pero sustituye JWT y la consulta de permisos por autenticacion de prueba. No verifica firmas, expiracion, emisor/audiencia ni un realm real. ApiFactory proporciona una BaseUrl ficticia; aun no hay pruebas dedicadas a /health.
 
 ## Inventario de archivos
 
@@ -535,7 +547,7 @@ Referencias: [TLS de Keycloak](https://www.keycloak.org/server/enabletls), [Post
 
 ## Comprobaciones y limites actuales
 
-`Bookify.Api.http` usa el host local 5285, pero no contiene aun login, registro, perfil ni /health. Ademas, su ejemplo de nombre de apartamento no alcanza los 200 caracteres exigidos y conserva un comentario antiguo que niega el alta de usuarios. Sustituir identificadores, ajustar el nombre y agregar Authorization a las peticiones protegidas; no obtiene tokens automaticamente. Estos limites del archivo se documentan, no se modifica el .http en esta revision.
+`Bookify.Api.http` usa el host local 5285 e incluye un ejemplo de actualizacion de apartamento. Todavia no contiene login, registro, perfil ni /health. Sustituir los identificadores y el token de ejemplo antes de ejecutar peticiones protegidas: el archivo no obtiene tokens automaticamente.
 
 `Dockerfile.original` conserva las etapas de la plantilla y solo copia el proyecto Api antes de `restore`. El Dockerfile activo copia tambien los proyectos referenciados antes de restaurar. Compose apunta expresamente a `Bookify.Api/Dockerfile`; la copia `.original` no interviene en esa construccion.
 

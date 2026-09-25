@@ -1,10 +1,18 @@
 # Bookify.Application
 
+## Apartments/UpdateApartment
+
+La actualizacion usa el mismo flujo CQRS del alta. [UpdateApartmentCommand](Apartments/UpdateApartment/UpdateApartmentCommand.cs) implementa ICommand sin valor de retorno: transporta ApartmentId y todos los campos editables. [UpdateApartmentCommandValidator](Apartments/UpdateApartment/UpdateApartmentCommandValidator.cs) aplica las reglas del alta y exige un Guid no vacio. Name admite hasta 200 caracteres, conforme al dominio actual, no exactamente 200.
+
+[UpdateApartmentCommandHandler](Apartments/UpdateApartment/UpdateApartmentCommandHandler.cs) valida Name mediante su fabrica, obtiene la entidad seguida con IApartmentRepository.GetByIdAsync y devuelve ApartmentErrors.NotFound si falta. Construye Address y Money con la moneda solicitada, invoca Apartment.Update y guarda una sola vez con el mismo CancellationToken. No llama Add ni crea otro apartamento. Traduce exclusivamente ConcurrencyException a ApartmentErrors.Conflict; otros fallos y cancelaciones se propagan. No reintenta automaticamente y una entidad modificada en memoria tras un fallo no implica persistencia.
+
+El escaneo existente de MediatR y FluentValidation registra las nuevas clases sin cambios de DI. No existe un evento de actualizacion de apartamento y no se agrega un consumidor sin una reaccion de negocio definida. Las restricciones de importes/direccion/amenities siguen en el pipeline, igual que en CreateApartment; invocar el handler directamente no ejecuta ese validador.
+
 Este proyecto contiene la capa de aplicacion de Bookify. Su responsabilidad es ejecutar los casos de uso del sistema coordinando entidades de dominio, repositorios, validadores, servicios externos y persistencia.
 
 Application no configura EF Core, no construye conexiones Npgsql ni implementa el envio de correo. Define contratos que Infrastructure implementa. Sin embargo, sus queries contienen SQL, nombres de tablas y columnas, e incluso sintaxis de PostgreSQL como `ANY`. La construccion de la conexion esta abstraida, pero el esquema y el dialecto de las lecturas siguen siendo dependencias de esta capa.
 
-Esta guia distingue el comportamiento implementado de las limitaciones pendientes. `Bookify.Api/Program.cs` registra Application e Infrastructure, y sus controladores invocan los casos de uso con `ISender`. En Development, la API aplica migraciones y sembrado al arrancar. Revision: 23 de septiembre de 2026. `/health` y la persistencia/procesamiento Outbox pertenecen a API/Infrastructure: Application conserva sus comandos y handlers de eventos sin depender de Quartz.
+Esta guia distingue el comportamiento implementado de las limitaciones pendientes. `Bookify.Api/Program.cs` registra Application e Infrastructure, y sus controladores invocan los casos de uso con `ISender`. En Development, la API aplica migraciones y sembrado al arrancar. `/health` y la persistencia/procesamiento Outbox pertenecen a API/Infrastructure: Application conserva sus comandos y handlers de eventos sin depender de Quartz.
 
 [Guia de la solucion](../readme.md) | [Domain](../Bookify.Domain/readme.md) | [Infrastructure](../Bookify.Infrastructure/readme.md) | [Api](../Bookify.Api/readme.md)
 
@@ -963,7 +971,7 @@ Para reaccionar a un evento, implementar `INotificationHandler<TDomainEvent>`. E
 - Existe control de propietario en GetBooking, pero no un behavior general de autorizacion ni controles equivalentes en ReserveBooking/CreateReview. No hay reglas de fechas futuras.
 - El correo es una implementacion vacia y el plazo de diez minutos solo aparece en el texto del mensaje.
 - Existen comandos de alta de apartamento, review, usuario, reserva y login. Confirmar, cancelar, rechazar y completar reservas siguen sin comandos ni endpoints.
-- [Bookify.Application.Tests](../Tests/Bookify.Application.Tests/readme.md) comprueba handlers, validadores, behaviors y DI: 138 casos correctos el 22/09/2026. La conexion SQL simulada verifica parametros y mapeo de Dapper, no la validez de SQL ni los conflictos reales contra PostgreSQL.
+- [Bookify.Application.Tests](../Tests/Bookify.Application.Tests/readme.md) comprueba handlers, validadores, behaviors y DI. La conexion SQL simulada verifica parametros y mapeo de Dapper, no la validez de SQL ni los conflictos reales contra PostgreSQL.
 
 ## Resumen
 

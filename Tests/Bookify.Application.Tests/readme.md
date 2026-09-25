@@ -1,5 +1,7 @@
 # Pruebas de Bookify.Application
 
+Apartments/UpdateApartmentTests comprueba el mapeo de campos, la copia de amenities, el token y guardado unico, la ausencia del apartamento, los conflictos de concurrencia, la propagacion de fallos y la validacion antes de acceder al repositorio. Incluye limites validos y defensa de Name al invocar el handler directamente. Usa ApplicationTestContext y el pipeline real de MediatR, sin PostgreSQL.
+
 El proyecto utiliza MSTest 4 con `Microsoft.NET.Test.Sdk` y el adaptador VSTest, FluentAssertions y Moq. Conserva el runner existente: los comandos siguientes no requieren Microsoft.Testing.Platform ni servicios externos. Las pruebas usan `// Arrange`, `// Act` y `// Assert`.
 
 ## Ejecutar

@@ -13,6 +13,7 @@
 @CompletedBookingId = 00000000-0000-0000-0000-000000000000
 @StartDate = 2026-10-01
 @EndDate = 2026-10-05
+@AccessToken = REPLACE_WITH_ACCESS_TOKEN
 
 ### Swagger UI (solo Development)
 GET {{Bookify.Api_HostAddress}}/swagger/index.html
@@ -40,6 +41,26 @@ Accept: application/json
   "street": "Calle Mayor 10",
   "priceAmount": 100,
   "cleaningFeeAmount": 25,
+  "currency": "EUR",
+  "amenities": [1, 3]
+}
+
+### Actualizar apartamento: 204, 404 si no existe, 409 ante conflicto de concurrencia
+# Sustituye todos los datos editables; no cambia Id ni LastBookedOnUTC.
+PUT {{Bookify.Api_HostAddress}}/api/apartments/{{ApartmentId}}
+Authorization: Bearer {{AccessToken}}
+Content-Type: application/json
+
+{
+  "name": "Apartamento Madrid Renovado",
+  "description": "Apartamento actualizado con wifi y aparcamiento.",
+  "country": "Spain",
+  "state": "Madrid",
+  "zipCode": "28001",
+  "city": "Madrid",
+  "street": "Calle Mayor 12",
+  "priceAmount": 120,
+  "cleaningFeeAmount": 30,
   "currency": "EUR",
   "amenities": [1, 3]
 }

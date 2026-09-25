@@ -1,6 +1,7 @@
 namespace Bookify.Domain.Tests.Apartments
 {
     using Bookify.Domain.Apartments;
+    using Bookify.Domain.Bookings;
     using Bookify.Domain.Commons;
     using FluentAssertions;
     using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -58,6 +59,78 @@ namespace Bookify.Domain.Tests.Apartments
             apartment.Amenities.Should().Equal(amenities);
 
             apartment.LastBookedOnUTC.Should().BeNull();
+
+            apartment.GetDomainEvents().Should().BeEmpty();
+        }
+
+        [TestMethod]
+        public void Update_Should_ReplaceEditableDataAndPreserveBookingHistory()
+        {
+            // Arrange
+
+            Apartment apartment = new(
+                Guid.NewGuid(),
+                ApartmentName,
+                Description,
+                Address,
+                Price,
+                CleaningFee,
+                []);
+
+            Guid id = apartment.Id;
+
+            DateTime bookedOn = DateTime.UnixEpoch;
+
+            Booking.Reserve(
+                apartment,
+                Guid.NewGuid(),
+                DateRange.Create(
+                    new DateOnly(2026, 10, 1),
+                    new DateOnly(2026, 10, 3)),
+                bookedOn,
+                new PricingServices());
+
+            Name name = Name.Create("Updated").Value;
+
+            Description description = new("Updated description");
+
+            Address address = Address with { Street = "Street 2" };
+
+            Money price = new(150m, Currency.Usd);
+
+            Money cleaning = new(30m, Currency.Usd);
+
+            List<Amenity> amenities = [Amenity.Wifi];
+
+            // Act
+
+            apartment.Update(
+                name,
+                description,
+                address,
+                price,
+                cleaning,
+                amenities);
+
+            amenities.Clear();
+
+            // Assert
+
+            apartment.Id.Should().Be(id);
+
+            apartment.LastBookedOnUTC.Should().Be(bookedOn);
+
+            apartment.Name.Should().Be(name);
+
+            apartment.Description.Should().Be(description);
+
+            apartment.Address.Should().Be(address);
+
+            apartment.Price.Should().Be(price);
+
+            apartment.CleaningFeeAmount.Should().Be(cleaning);
+
+            apartment.Amenities.Should().Equal(Amenity.Wifi);
 
             apartment.GetDomainEvents().Should().BeEmpty();
         }

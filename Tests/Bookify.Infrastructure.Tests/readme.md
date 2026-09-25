@@ -1,16 +1,16 @@
 # Pruebas de Bookify.Infrastructure
 
+Persistence/ApartmentUpdateTests comprueba los cambios detectados en una entidad seguida, sin insertar otra ni modificar LastBookedOnUTC. Persistence/PostgresApartmentUpdateTests verifica valores owned, comodidades y conservacion del precio de la reserva en una base aislada; requiere BOOKIFY_TEST_POSTGRES.
+
 ## Objetivo
 
 El proyecto comprueba los adaptadores de Infrastructure: autenticacion HTTP, claims, politicas de permisos, configuracion de EF Core, repositorios, migraciones, preparacion/procesamiento de Outbox, configuracion Quartz y registro de dependencias.
 
 Usa MSTest 4 con el runner VSTest (`Microsoft.NET.Test.Sdk` y `MSTest.TestAdapter`), FluentAssertions y Moq, con las versiones que ya usa Application.Tests. Referencia Infrastructure directamente, sin cargar la API. `InternalsVisibleTo` permite comprobar las clases internas sin hacerlas publicas.
 
-## Estado actual
+## Preparacion de las pruebas
 
-El 23/09/2026 la suite completa obtuvo 108 casos correctos, 0 fallidos y 26 omitidos por falta de BOOKIFY_TEST_POSTGRES. Incluye 20 casos unitarios Outbox y cuatro PostgreSQL Outbox, estos ultimos dentro de los omitidos. No se ha medido una nueva cobertura porcentual.
-
-En la adaptacion anterior se corrigieron cinco tests que esperaban publicacion desde SaveChanges y dos que no aportaban IHostApplicationLifetime, necesario para validar el servicio alojado de Quartz.
+Los tests de SaveChanges comprueban la preparacion de Outbox en lugar de la publicacion inmediata. Los tests de DI aportan IHostApplicationLifetime para validar el servicio alojado de Quartz.
 
 DependencyInjectionTests aporta un doble de IHostApplicationLifetime, configura IntervalInSeconds/BatchSize y mantiene ValidateScopes/ValidateOnBuild. Comprueba el registro de Quartz y sus opciones sin iniciar el scheduler. Se agregan tambien un caso de reintento sobre el mismo contexto y la generacion SQL de avance/retroceso de Add_OutBoxMessages.
 
@@ -85,9 +85,9 @@ dotnet test Tests/Bookify.Infrastructure.Tests/Bookify.Infrastructure.Tests.cspr
 dotnet test Tests/Bookify.Infrastructure.Tests/Bookify.Infrastructure.Tests.csproj --filter "FullyQualifiedName~PostgresOutboxTests"
 ```
 
-El segundo comando requiere `BOOKIFY_TEST_POSTGRES` con la configuracion indicada arriba. La ultima ejecucion completa obtuvo 108 casos correctos, 0 fallidos y 26 omitidos por ausencia de esa variable. Los veinte casos unitarios de la carpeta Outbox se ejecutaron correctamente; los cuatro de PostgreSQL compilaron y se descubrieron, pero no se ejecutaron contra un servidor.
+El segundo comando requiere `BOOKIFY_TEST_POSTGRES` con la configuracion indicada arriba. Sin esa variable, MSTest marca los casos PostgreSQL como inconclusos. Los tests unitarios de Outbox no abren conexiones externas.
 
-Para ejecutar los veinte casos unitarios de todas las clases Outbox, sin servicios externos:
+Para ejecutar las pruebas unitarias de las clases Outbox, sin servicios externos:
 
 ```powershell
 dotnet test Tests/Bookify.Infrastructure.Tests/Bookify.Infrastructure.Tests.csproj --filter "TestCategory=Infrastructure&FullyQualifiedName~Bookify.Infrastructure.Tests.Outbox"

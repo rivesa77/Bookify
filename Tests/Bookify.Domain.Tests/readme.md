@@ -1,5 +1,7 @@
 # Pruebas de Bookify.Domain
 
+ApartmentTests comprueba que Update sustituye los valores editables, copia Amenities y conserva identidad y fecha de ultima reserva. La reserva previa se crea con Booking.Reserve, sin alterar setters privados mediante reflexion.
+
 ## Objetivo y ejecucion
 
 Pruebas unitarias de las reglas de negocio y los contratos publicos con comportamiento de Domain. El proyecto referencia solo `Bookify.Domain`: no carga Application, API, Infrastructure, contenedores de dependencias, PostgreSQL ni Keycloak. No necesita mocks de repositorios.
